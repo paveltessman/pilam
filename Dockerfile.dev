@@ -1,0 +1,32 @@
+# Development image: live reload, source bind-mounted at /src.
+
+FROM golang:1.26-alpine
+
+ARG TAILWIND_VERSION=v4.3.3
+
+# the "musl" Tailwind build still links against libstdc++/libgcc dynamically,
+# and Alpine does not ship them by default.
+RUN apk add --no-cache make git curl bash libstdc++ libgcc
+
+# The Tailwind standalone CLI, musl build. `make tools` fetches the same binary
+# on the host; here it is baked in so the container needs nothing from ./bin.
+RUN curl -sSfL -o /usr/local/bin/tailwindcss \
+      "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-$(case "$(uname -m)" in aarch64) echo arm64;; *) echo x64;; esac)-musl" \
+    && chmod +x /usr/local/bin/tailwindcss
+
+ENV TAILWIND=/usr/local/bin/tailwindcss
+
+WORKDIR /src
+
+# Warm the module cache so the first reload is not a full download.
+# The bind mount replaces /src at run time; only the cache layers survive
+COPY go.mod go.sum ./
+RUN go mod download
+
+# The bind-mounted /src is a git repo owned by the host user, so git inside the
+# container refuses to read it and VCS stamping fails the build. Nothing in a
+# dev image wants that stamp anyway.
+ENV GOFLAGS=-buildvcs=false
+
+EXPOSE 8080
+CMD ["make", "dev"]

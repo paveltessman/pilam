@@ -1,0 +1,18 @@
+// Package views holds the templ components and the view models they consume.
+
+package views
+
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="ru">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title }</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+		</head>
+		<body class="min-h-screen bg-background text-foreground antialiased">
+			{ children... }
+		</body>
+	</html>
+}

@@ -1,0 +1,22 @@
+# Live reload for the dev container (`make dev`).
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # templ first: the generated *_templ.go are what the compiler actually sees.
+  cmd = "go tool templ generate && go build -o ./tmp/pilam ./cmd/pilam"
+  full_bin = "./tmp/pilam serve"
+  include_ext = ["go", "templ", "css"]
+  exclude_dir = ["bin", "tmp", "docs", "db", ".git"]
+  exclude_regex = ["_test\\.go$", "_templ\\.go$"]
+  exclude_unchanged = true
+  delay = 200
+  stop_on_error = true
+  send_interrupt = true
+  kill_delay = 2000
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true

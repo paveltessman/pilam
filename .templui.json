@@ -1,0 +1,7 @@
+{
+  "componentsDir": "internal/http/views/ui",
+  "utilsDir": "internal/http/views/utils",
+  "moduleName": "github.com/paveltessman/pilam",
+  "jsDir": "internal/http/static/js",
+  "jsPublicPath": "/static/js"
+}

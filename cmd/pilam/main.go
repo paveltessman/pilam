@@ -1,0 +1,70 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+)
+
+var errNotImplemented = errors.New("not implemented yet")
+
+type command struct {
+	name    string
+	summary string
+	run     func(ctx context.Context, args []string) error
+}
+
+func commands() []command {
+	commands := []command{
+		{"serve", "run the HTTP server", runServe},
+		{"migrate", "apply or roll back database migrations", func(context.Context, []string) error {
+			return fmt.Errorf("migrate: %w", errNotImplemented)
+		}},
+		{"seed", "load the demo dataset", func(context.Context, []string) error {
+			return fmt.Errorf("seed: %w", errNotImplemented)
+		}},
+	}
+	return commands
+}
+
+func main() {
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	slog.SetDefault(logger)
+
+	// every subcommand shuts down from there.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx, os.Args[1:]); err != nil {
+		logger.Error("fatal", "err", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, args []string) error {
+	if len(args) == 0 {
+		usage()
+		return errors.New("no subcommand given")
+	}
+
+	for _, c := range commands() {
+		if c.name == args[0] {
+			return c.run(ctx, args[1:])
+		}
+	}
+
+	usage()
+	return fmt.Errorf("unknown subcommand %q", args[0])
+}
+
+func usage() {
+	fmt.Fprintln(os.Stderr, "usage: pilam <command> [flags]")
+	fmt.Fprintln(os.Stderr, "\ncommands:")
+	for _, c := range commands() {
+		fmt.Fprintf(os.Stderr, "  %-8s %s\n", c.name, c.summary)
+	}
+}

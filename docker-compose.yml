@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      # Postgres 18+ wants the mount one level up, at /var/lib/postgresql
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    env_file: .env
+    ports:
+      - "${HTTP_PORT}:8080"
+    volumes:
+      # Source is mounted, not copied: air rebuilds on change, and generated
+      # files land back on the host so `make run` and the container agree.
+      - .:/src
+      - media:/var/lib/pilam/media
+
+      # Keeping the module and build caches out of the bind mount so that
+      # a reload take a second instead of a minute.
+      - gomod:/go/pkg/mod
+      - gobuild:/root/.cache/go-build
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  media:
+  gomod:
+  gobuild:

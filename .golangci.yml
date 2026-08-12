@@ -1,0 +1,21 @@
+version: "2"
+
+linters:
+  default: standard
+  exclusions:
+    # templ writes a "Code generated" header; issues in those files are not ours.
+    generated: lax
+    paths:
+      # Vendored templUI source. We update it with the templui CLI, not by hand.
+      - internal/http/views/ui
+      - internal/http/views/utils
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - internal/http/views/ui
+      - internal/http/views/utils

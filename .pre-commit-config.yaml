@@ -1,0 +1,61 @@
+# pre-commit hooks for pilam.
+#
+# The Go tools are pinned in go.mod and invoked through `go tool`, so the hooks
+# below use `language: system` rather than pre-commit's own Go mirrors. That
+# keeps one version of each tool for the Makefile, CI, and these hooks.
+#
+#   uv tool install pre-commit
+#   pre-commit install --install-hooks
+#
+# Generated files (*_templ.go, app.css) are gitignored, so no hook ever sees them.
+
+# fast hygiene on commit, the full vet/test/lint pass on push.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+# Vendored templUI source. We update it with the templui CLI, not by hand — the
+# same paths .golangci.yml skips.
+exclude: '^internal/http/views/(ui|utils)/'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: local
+    hooks:
+      - id: templ-fmt
+        name: templ fmt
+        entry: go tool templ fmt
+        language: system
+        files: '\.templ$'
+
+      - id: golangci-lint-fmt
+        name: golangci-lint fmt
+        entry: go tool golangci-lint fmt
+        language: system
+        types: [go]
+
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: go mod tidy
+        language: system
+        pass_filenames: false
+        files: '(\.go$|^go\.(mod|sum)$)'
+
+      # Compiling needs the generated templ files and the embedded stylesheet,
+      # so this goes through make (generate + css + vet + test + lint) and runs
+      # on push rather than on every commit.
+      - id: make-check
+        name: make check
+        entry: make check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

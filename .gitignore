@@ -1,0 +1,11 @@
+# Fetched tools and build output
+/bin/
+/tmp/
+
+# Local environment
+.env
+
+# Generated: `make generate` and `make css` recreate these from source.
+*_templ.go
+*_templ.txt
+/internal/http/static/css/app.css

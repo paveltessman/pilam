@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR makes the in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: vet, test, lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      # The Tailwind standalone binary is a ~100MB download that `make css`
+      # fetches once. Re-key when the Makefile pins a new version.
+      - uses: actions/cache@v4
+        with:
+          path: bin/tailwindcss
+          key: tailwind-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      # generate + css + go vet + go test + golangci-lint run.
+      - run: make check
+
+  # Only the language-agnostic hooks. The Go ones are skipped here because the
+  # check job already covers them: `golangci-lint run` reports gofmt/goimports
+  # issues itself, and tidiness is checked by `go mod tidy -diff` in make check.
+  # Running them here would mean a second Go toolchain, a second golangci-lint
+  # build, and `make generate` — for a duplicate answer.
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - uses: pre-commit/action@v3.0.1
+        env:
+          SKIP: templ-fmt,golangci-lint-fmt,go-mod-tidy
