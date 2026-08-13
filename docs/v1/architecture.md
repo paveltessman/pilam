@@ -64,9 +64,8 @@ cmd/
     seed.go              demo seed subcommand
 
 internal/
-  config/                typed config, validated at boot
-
   platform/
+    config/              typed config, validated at boot
     clock/               Clock interface + real + fixed
     ids/                 ID generation
     logging/             slog setup, request-scoped logger

@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/paveltessman/pilam/internal/platform/config"
 )
 
 var errNotImplemented = errors.New("not implemented yet")
@@ -15,16 +17,16 @@ var errNotImplemented = errors.New("not implemented yet")
 type command struct {
 	name    string
 	summary string
-	run     func(ctx context.Context, args []string) error
+	run     func(ctx context.Context, cfg config.Config, args []string) error
 }
 
 func commands() []command {
 	commands := []command{
 		{"serve", "run the HTTP server", runServe},
-		{"migrate", "apply or roll back database migrations", func(context.Context, []string) error {
+		{"migrate", "apply or roll back database migrations", func(context.Context, config.Config, []string) error {
 			return fmt.Errorf("migrate: %w", errNotImplemented)
 		}},
-		{"seed", "load the demo dataset", func(context.Context, []string) error {
+		{"seed", "load the demo dataset", func(context.Context, config.Config, []string) error {
 			return fmt.Errorf("seed: %w", errNotImplemented)
 		}},
 	}
@@ -53,7 +55,11 @@ func run(ctx context.Context, args []string) error {
 
 	for _, c := range commands() {
 		if c.name == args[0] {
-			return c.run(ctx, args[1:])
+			cfg, err := config.Load()
+			if err != nil {
+				return err
+			}
+			return c.run(ctx, cfg, args[1:])
 		}
 	}
 
