@@ -3,11 +3,14 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
 // Read the environment one variable at a time, accumulating failures.
@@ -16,18 +19,16 @@ type loader struct {
 	errs   []error
 }
 
-/*
-Read key and parse it with parse, falling back to default when the
-variable is unset or empty.
-
-Empty counts as unset: `MEDIA_DIR=` in an .env
-file is considered as the author left it blank, not that they wanted an empty string.
-
-An unparseable value is recorded against its key and the zero value returned,
-so loading continues and every bad variable is reported together.
-
-Default is parsed by the same code path.
-*/
+// Read key and parse it with parse, falling back to default when the
+// variable is unset or empty.
+//
+// Empty counts as unset: `MEDIA_DIR=` in an .env
+// file is considered as the author left it blank, not that they wanted an empty string.
+//
+// An unparseable value is recorded against its key and the zero value returned,
+// so loading continues and every bad variable is reported together.
+//
+// Default is parsed by the same code path.
 func value[T any](loader *loader, key, def string, parse func(string) (T, error)) T {
 	raw := def
 	if envVal := loader.getenv(key); envVal != "" {
@@ -51,15 +52,13 @@ func (l *loader) err() error {
 	return &ErrInvalidValue{errs: l.errs}
 }
 
-/*
-ErrInvalidValue reports every rejected variable at once.
-
-It exists instead of errors.Join because Join separates with newlines, and
-this error's destination is a slog call in main, where a newline is escaped
-to a literal \n and such message is hard to read.
-
-Unwrap keeps errors.Is and errors.As working across the whole set anyway.
-*/
+// ErrInvalidValue reports every rejected variable at once.
+//
+// It exists instead of errors.Join because Join separates with newlines, and
+// this error's destination is a slog call in main, where a newline is escaped
+// to a literal \n and such message is hard to read.
+//
+// Unwrap keeps errors.Is and errors.As working across the whole set anyway.
 type ErrInvalidValue struct{ errs []error }
 
 func (e *ErrInvalidValue) Error() string {
@@ -110,14 +109,12 @@ func parsePostgresURL(s string) (string, error) {
 	return s, nil
 }
 
-/*
-Resolve a directory path to an absolute one.
-
-Relative paths are allowed and resolved against the working directory,
-which is what lets the default work on a developer's machine; storing
-the absolute form means nothing downstream depends on the process never
-changing directory.
-*/
+// Resolve a directory path to an absolute one.
+//
+// Relative paths are allowed and resolved against the working directory,
+// which is what lets the default work on a developer's machine; storing
+// the absolute form means nothing downstream depends on the process never
+// changing directory.
 func parseDir(s string) (string, error) {
 	abs, err := filepath.Abs(s)
 	if err != nil {
@@ -126,12 +123,10 @@ func parseDir(s string) (string, error) {
 	return abs, nil
 }
 
-/*
-Load an IANA zone name.
-
-"Local" is rejected on purpose, so that the business timezone does not depend on
-the machine the app is hosted on.
-*/
+// Load an IANA zone name.
+//
+// "Local" is rejected on purpose, so that the business timezone does not depend on
+// the machine the app is hosted on.
 func parseTimezone(s string) (*time.Location, error) {
 	if s == "Local" {
 		return nil, errors.New(`must be an explicit IANA zone such as "Europe/Moscow", not "Local"`)
@@ -143,10 +138,32 @@ func parseTimezone(s string) (*time.Location, error) {
 	return loc, nil
 }
 
-/*
-Replace the password in a connection URL with "xxxxx", falling back to a placeholder
-if the URL will not parse.
-*/
+// Read a log level name — debug, info, warn or error, in any case, optionally
+// with an offset such as "warn+2".
+//
+// slog's own parser is the authority on the vocabulary, so a level this accepts
+// is a level the handler understands.
+func parseLogLevel(s string) (slog.Level, error) {
+	var lvl slog.Level
+	if err := lvl.UnmarshalText([]byte(s)); err != nil {
+		return 0, fmt.Errorf("not a level name: %w", err)
+	}
+	return lvl, nil
+}
+
+// Read a log format name. Unknown names are rejected here so that logging.New,
+// which is called with the result, can treat any other value as a bug.
+func parseLogFormat(s string) (logging.Format, error) {
+	switch f := logging.Format(strings.ToLower(s)); f {
+	case logging.FormatText, logging.FormatJSON:
+		return f, nil
+	default:
+		return "", fmt.Errorf("want %q or %q", logging.FormatText, logging.FormatJSON)
+	}
+}
+
+// Replace the password in a connection URL with "xxxxx", falling back to a placeholder
+// if the URL will not parse.
 func redactURL(s string) string {
 	u, err := url.Parse(s)
 	if err != nil {

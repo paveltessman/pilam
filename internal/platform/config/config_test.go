@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
 // Turns a map into the lookup load expects. Absent keys read as empty.
@@ -21,11 +23,9 @@ func mustLoad(t *testing.T, m map[string]string) Config {
 	return cfg
 }
 
-/*
-An empty environment must produce a usable configuration, and — because
-defaults go through the same parsers as the environment — this is also what
-proves no default has been written that the package would reject.
-*/
+// An empty environment must produce a usable configuration, and — because
+// defaults go through the same parsers as the environment — this is also what
+// proves no default has been written that the package would reject.
 func TestDefaultsAreValidAndComplete(t *testing.T) {
 	cfg := mustLoad(t, nil)
 
@@ -49,6 +49,12 @@ func TestDefaultsAreValidAndComplete(t *testing.T) {
 	if cfg.Timezone == nil || cfg.Timezone.String() != defaultTimezone {
 		t.Errorf("Timezone = %v, want %s", cfg.Timezone, defaultTimezone)
 	}
+	if cfg.Log.Level != slog.LevelInfo {
+		t.Errorf("Log.Level = %s, want %s", cfg.Log.Level, slog.LevelInfo)
+	}
+	if want := logging.Format(defaultLogFormat); cfg.Log.Format != want {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, want)
+	}
 }
 
 func TestEnvironmentOverridesEveryField(t *testing.T) {
@@ -58,6 +64,8 @@ func TestEnvironmentOverridesEveryField(t *testing.T) {
 		"DATABASE_URL":        "postgresql://u:p@db:5432/pilam",
 		"MEDIA_DIR":           "/var/lib/pilam/media",
 		"BUSINESS_TZ":         "Asia/Tokyo",
+		"LOG_LEVEL":           "debug",
+		"LOG_FORMAT":          "json",
 	})
 
 	if want := "127.0.0.1:9000"; cfg.HTTP.Addr != want {
@@ -75,12 +83,38 @@ func TestEnvironmentOverridesEveryField(t *testing.T) {
 	if want := "Asia/Tokyo"; cfg.Timezone.String() != want {
 		t.Errorf("Timezone = %v, want %s", cfg.Timezone, want)
 	}
+	if want := slog.LevelDebug; cfg.Log.Level != want {
+		t.Errorf("Log.Level = %s, want %s", cfg.Log.Level, want)
+	}
+	if want := logging.FormatJSON; cfg.Log.Format != want {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, want)
+	}
 }
 
-/*
-A variable present but blank is an unfilled line in an .env file, not a
-request for the empty string.
-*/
+// Level names come off an .env line or a compose file, where nobody types case
+// carefully; the offset form is slog's, and it comes along for free.
+func TestLogLevelAcceptsCaseAndOffsets(t *testing.T) {
+	for in, want := range map[string]slog.Level{
+		"DEBUG":  slog.LevelDebug,
+		"Warn":   slog.LevelWarn,
+		"error":  slog.LevelError,
+		"warn+2": slog.LevelWarn + 2,
+	} {
+		t.Run(in, func(t *testing.T) {
+			cfg := mustLoad(t, map[string]string{"LOG_LEVEL": in})
+			if cfg.Log.Level != want {
+				t.Errorf("Log.Level = %s, want %s", cfg.Log.Level, want)
+			}
+		})
+	}
+
+	if cfg := mustLoad(t, map[string]string{"LOG_FORMAT": "JSON"}); cfg.Log.Format != logging.FormatJSON {
+		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, logging.FormatJSON)
+	}
+}
+
+// A variable present but blank is an unfilled line in an .env file, not a
+// request for the empty string.
 func TestBlankValueFallsBackToDefault(t *testing.T) {
 	cfg := mustLoad(t, map[string]string{"HTTP_ADDR": "", "BUSINESS_TZ": ""})
 
@@ -109,6 +143,9 @@ func TestRejectsBadValues(t *testing.T) {
 		{"url not a url", "DATABASE_URL", "postgres://%zz", "not a URL"},
 		{"unknown timezone", "BUSINESS_TZ", "Europe/Atlantis", "unknown timezone"},
 		{"timezone Local", "BUSINESS_TZ", "Local", "explicit IANA zone"},
+		{"unknown log level", "LOG_LEVEL", "chatty", "not a level name"},
+		{"log level bad offset", "LOG_LEVEL", "warn+x", "not a level name"},
+		{"unknown log format", "LOG_FORMAT", "logfmt", `want "text" or "json"`},
 	}
 
 	for _, tcase := range cases {
@@ -145,10 +182,8 @@ func TestReportsEveryProblemAtOnce(t *testing.T) {
 	}
 }
 
-/*
-The business timezone exists to make "today" independent of where the
-process runs.
-*/
+// The business timezone exists to make "today" independent of where the
+// process runs.
 func TestBusinessTimezoneIsOffsetFromUTC(t *testing.T) {
 	cfg := mustLoad(t, nil)
 

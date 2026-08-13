@@ -12,6 +12,8 @@ import (
 	// container images do not ship. Rather than depend on the image,
 	// the database travels inside the binary. Costs ~450KB.
 	_ "time/tzdata"
+
+	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
 // Defaults
@@ -21,12 +23,15 @@ const (
 	defaultDatabaseURL   = "postgres://pilam:pilam@localhost:5433/pilam?sslmode=disable"
 	defaultMediaDir      = "tmp/media"
 	defaultTimezone      = "Europe/Moscow"
+	defaultLogLevel      = "info"
+	defaultLogFormat     = string(logging.FormatText)
 )
 
 type Config struct {
 	HTTP     HTTP
 	Database Database
 	Media    Media
+	Log      Log
 	Timezone *time.Location
 }
 
@@ -53,15 +58,23 @@ type Media struct {
 	Dir string
 }
 
+// Log is what main hands to logging.New. Both values are validated here, so
+// the logger itself has nothing left to reject.
+type Log struct {
+	// Level is the threshold below which records are dropped.
+	Level slog.Level
+
+	// Format is the wire format: text for a person, json for a collector.
+	Format logging.Format
+}
+
 // Build the configuration from the process environment
 func Load() (Config, error) {
 	return load(os.Getenv)
 }
 
-/*
-load is Load with the environment injected, so tests can describe a whole
-environment as a map instead of mutating the process's.
-*/
+// load is Load with the environment injected, so tests can describe a whole
+// environment as a map instead of mutating the process's.
 func load(getenv func(string) string) (Config, error) {
 	loader := &loader{getenv: getenv}
 
@@ -78,10 +91,16 @@ func load(getenv func(string) string) (Config, error) {
 		Dir: value(loader, "MEDIA_DIR", defaultMediaDir, parseDir),
 	}
 
+	log := Log{
+		Level:  value(loader, "LOG_LEVEL", defaultLogLevel, parseLogLevel),
+		Format: value(loader, "LOG_FORMAT", defaultLogFormat, parseLogFormat),
+	}
+
 	cfg := Config{
 		HTTP:     http,
 		Database: db,
 		Media:    media,
+		Log:      log,
 		Timezone: value(loader, "BUSINESS_TZ", defaultTimezone, parseTimezone),
 	}
 
@@ -98,6 +117,8 @@ func (c Config) LogValue() slog.Value {
 		slog.Duration("http_shutdown_grace", c.HTTP.ShutdownGrace),
 		slog.String("database_url", redactURL(c.Database.URL)),
 		slog.String("media_dir", c.Media.Dir),
+		slog.String("log_level", c.Log.Level.String()),
+		slog.String("log_format", string(c.Log.Format)),
 		slog.String("timezone", c.Timezone.String()),
 	)
 	return v

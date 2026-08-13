@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/paveltessman/pilam/internal/platform/config"
+	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
 var errNotImplemented = errors.New("not implemented yet")
@@ -34,15 +35,20 @@ func commands() []command {
 }
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	slog.SetDefault(logger)
+	// Configuration is what says how to log, so the failure to read it has to be
+	// reportable before that answer exists. run installs the configured logger
+	// over this one as soon as it has loaded.
+	slog.SetDefault(logging.New(logging.Options{
+		Level:  slog.LevelInfo,
+		Format: logging.FormatText,
+	}))
 
 	// every subcommand shuts down from there.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	if err := run(ctx, os.Args[1:]); err != nil {
-		logger.Error("fatal", "err", err)
+		slog.Error("fatal", "err", err)
 		os.Exit(1)
 	}
 }
@@ -59,6 +65,10 @@ func run(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
+			slog.SetDefault(logging.New(logging.Options{
+				Level:  cfg.Log.Level,
+				Format: cfg.Log.Format,
+			}))
 			return c.run(ctx, cfg, args[1:])
 		}
 	}
