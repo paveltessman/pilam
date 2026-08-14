@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"log/slog"
 	"strings"
 	"testing"
@@ -55,18 +56,74 @@ func TestDefaultsAreValidAndComplete(t *testing.T) {
 	if want := logging.Format(defaultLogFormat); cfg.Log.Format != want {
 		t.Errorf("Log.Format = %q, want %q", cfg.Log.Format, want)
 	}
+
+	ttl, err := time.ParseDuration(defaultSessionTTL)
+	if err != nil {
+		t.Errorf("could not parse the default session TTL. value: %s", defaultSessionTTL)
+	}
+	if cfg.Session.TTL != ttl {
+		t.Errorf("Session.TTL = %s, want %s", cfg.Session.TTL, ttl)
+	}
+}
+
+// SESSION_SECRET is generated if unset
+func TestUnsetSecretIsGeneratedAndSaysSo(t *testing.T) {
+	cfg := mustLoad(t, nil)
+
+	if !cfg.Session.Generated {
+		t.Error("Session.Generated is false for an unset SESSION_SECRET")
+	}
+	if got := len(cfg.Session.Secret); got != generatedSecretLen {
+		t.Errorf("generated key is %d bytes, want %d", got, generatedSecretLen)
+	}
+
+	// Two boots on the same environment must not agree, or "generated" would be
+	// a fixed key with extra steps.
+	other := mustLoad(t, nil)
+	if bytes.Equal(cfg.Session.Secret, other.Session.Secret) {
+		t.Error("two loads generated the same key")
+	}
+}
+
+func TestRejectsAShortSecret(t *testing.T) {
+	const short = "hunter2"
+
+	_, err := load(env(map[string]string{"SESSION_SECRET": short}))
+	if err == nil {
+		t.Fatalf("SESSION_SECRET=%q was accepted", short)
+	}
+	if !strings.Contains(err.Error(), "SESSION_SECRET") {
+		t.Errorf("error does not name the variable: %v", err)
+	}
+	if strings.Contains(err.Error(), short) {
+		t.Errorf("the rejected key appears in the error: %v", err)
+	}
 }
 
 func TestEnvironmentOverridesEveryField(t *testing.T) {
+	const secret = "a-configured-signing-key-of-usable-length"
+
 	cfg := mustLoad(t, map[string]string{
 		"HTTP_ADDR":           "127.0.0.1:9000",
 		"HTTP_SHUTDOWN_GRACE": "45s",
 		"DATABASE_URL":        "postgresql://u:p@db:5432/pilam",
 		"MEDIA_DIR":           "/var/lib/pilam/media",
+		"SESSION_SECRET":      secret,
+		"SESSION_TTL":         "24h",
 		"BUSINESS_TZ":         "Asia/Tokyo",
 		"LOG_LEVEL":           "debug",
 		"LOG_FORMAT":          "json",
 	})
+
+	if string(cfg.Session.Secret) != secret {
+		t.Errorf("Session.Secret = %q, want the configured key", cfg.Session.Secret)
+	}
+	if cfg.Session.Generated {
+		t.Error("Session.Generated is true for a configured key")
+	}
+	if want := 24 * time.Hour; cfg.Session.TTL != want {
+		t.Errorf("Session.TTL = %s, want %s", cfg.Session.TTL, want)
+	}
 
 	if want := "127.0.0.1:9000"; cfg.HTTP.Addr != want {
 		t.Errorf("HTTP.Addr = %q, want %q", cfg.HTTP.Addr, want)
@@ -141,6 +198,8 @@ func TestRejectsBadValues(t *testing.T) {
 		{"url no host", "DATABASE_URL", "postgres:///pilam", "host part is missing"},
 		{"url no database", "DATABASE_URL", "postgres://u:p@db:5432", "database name is missing"},
 		{"url not a url", "DATABASE_URL", "postgres://%zz", "not a URL"},
+		{"session ttl zero", "SESSION_TTL", "0s", "must be positive"},
+		{"session ttl not a duration", "SESSION_TTL", "a week", "not a duration"},
 		{"unknown timezone", "BUSINESS_TZ", "Europe/Atlantis", "unknown timezone"},
 		{"timezone Local", "BUSINESS_TZ", "Local", "explicit IANA zone"},
 		{"unknown log level", "LOG_LEVEL", "chatty", "not a level name"},
@@ -196,7 +255,8 @@ func TestBusinessTimezoneIsOffsetFromUTC(t *testing.T) {
 
 func TestLogValueRedactsThePassword(t *testing.T) {
 	cfg := mustLoad(t, map[string]string{
-		"DATABASE_URL": "postgres://pilam:hunter2@db:5432/pilam?sslmode=disable",
+		"DATABASE_URL":   "postgres://pilam:hunter2@db:5432/pilam?sslmode=disable",
+		"SESSION_SECRET": "correct-horse-battery-staple-and-then-some",
 	})
 
 	// Logged the way main logs it, so this covers the wiring and not just the
@@ -207,6 +267,9 @@ func TestLogValueRedactsThePassword(t *testing.T) {
 	logged := buf.String()
 	if strings.Contains(logged, "hunter2") {
 		t.Errorf("password survives logging: %s", logged)
+	}
+	if strings.Contains(logged, "correct-horse") {
+		t.Errorf("session signing key survives logging: %s", logged)
 	}
 	// Everything else about the URL is diagnostic and must stay.
 	for _, want := range []string{"db:5432", "pilam", "sslmode=disable"} {

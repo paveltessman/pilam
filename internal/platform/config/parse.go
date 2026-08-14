@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -42,6 +43,35 @@ func value[T any](loader *loader, key, def string, parse func(string) (T, error)
 		return zero
 	}
 	return parsed
+}
+
+// Bounds on the session signing key.
+const minSecretLen = 32
+const generatedSecretLen = 32
+
+// Read a signing key, generating one when the variable is unset.
+// Generating causes a logout on every restart.
+func (l *loader) secret(key string) ([]byte, bool) {
+	raw := l.getenv(key)
+	if raw == "" {
+		return generateSecret(), true
+	}
+	if len(raw) < minSecretLen {
+		err := fmt.Errorf("%s: must be at least %d chars, got %d", key, minSecretLen, len(raw))
+		l.errs = append(l.errs, err)
+		return nil, false
+	}
+	return []byte(raw), false
+}
+
+func generateSecret() []byte {
+	key := make([]byte, generatedSecretLen)
+	if _, err := rand.Read(key); err != nil {
+		// crypto/rand failing is a condition the runtime already treats as
+		// fatal, and there is no configuration to return without a key.
+		panic(fmt.Errorf("config: reading crypto/rand: %w", err))
+	}
+	return key
 }
 
 // Return every failure as one error, or nil.

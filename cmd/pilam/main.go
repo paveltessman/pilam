@@ -69,6 +69,9 @@ func run(ctx context.Context, args []string) error {
 				Level:  cfg.Log.Level,
 				Format: cfg.Log.Format,
 			}))
+			if cfg.Session.Generated {
+				slog.Warn("SESSION_SECRET is unset: sessions are signed with a key made at boot, so restarting logs everyone out")
+			}
 			return c.run(ctx, cfg, args[1:])
 		}
 	}

@@ -22,6 +22,7 @@ const (
 	defaultShutdownGrace = "10s"
 	defaultDatabaseURL   = "postgres://pilam:pilam@localhost:5433/pilam?sslmode=disable"
 	defaultMediaDir      = "tmp/media"
+	defaultSessionTTL    = "168h"
 	defaultTimezone      = "Europe/Moscow"
 	defaultLogLevel      = "info"
 	defaultLogFormat     = string(logging.FormatText)
@@ -31,6 +32,7 @@ type Config struct {
 	HTTP     HTTP
 	Database Database
 	Media    Media
+	Session  Session
 	Log      Log
 	Timezone *time.Location
 }
@@ -56,6 +58,16 @@ type Media struct {
 	// Dir is the path of the directory uploads are written to. Backed
 	// by a named volume under compose.
 	Dir string
+}
+
+// Session configures the signed cookie that carries a login across requests.
+type Session struct {
+	Secret []byte
+	TTL    time.Duration
+
+	// 'true' indicates that SESSION_SECRET was unset and the key was made at
+	// boot instead. Sessions then last until the process restarts.
+	Generated bool
 }
 
 // Log is what main hands to logging.New. Both values are validated here, so
@@ -91,6 +103,13 @@ func load(getenv func(string) string) (Config, error) {
 		Dir: value(loader, "MEDIA_DIR", defaultMediaDir, parseDir),
 	}
 
+	secret, generated := loader.secret("SESSION_SECRET")
+	session := Session{
+		Secret:    secret,
+		TTL:       value(loader, "SESSION_TTL", defaultSessionTTL, parsePositiveTimeDuration),
+		Generated: generated,
+	}
+
 	log := Log{
 		Level:  value(loader, "LOG_LEVEL", defaultLogLevel, parseLogLevel),
 		Format: value(loader, "LOG_FORMAT", defaultLogFormat, parseLogFormat),
@@ -100,6 +119,7 @@ func load(getenv func(string) string) (Config, error) {
 		HTTP:     http,
 		Database: db,
 		Media:    media,
+		Session:  session,
 		Log:      log,
 		Timezone: value(loader, "BUSINESS_TZ", defaultTimezone, parseTimezone),
 	}
@@ -112,11 +132,20 @@ func load(getenv func(string) string) (Config, error) {
 
 // LogValue renders the configuration for slog with the database password removed.
 func (c Config) LogValue() slog.Value {
+
+	// How the signing key was arrived at, for the log line.
+	secretOrigin := map[bool]string{
+		true:  "generated at boot",
+		false: "configured",
+	}
+
 	v := slog.GroupValue(
 		slog.String("http_addr", c.HTTP.Addr),
 		slog.Duration("http_shutdown_grace", c.HTTP.ShutdownGrace),
 		slog.String("database_url", redactURL(c.Database.URL)),
 		slog.String("media_dir", c.Media.Dir),
+		slog.String("session_secret", secretOrigin[c.Session.Generated]),
+		slog.Duration("session_ttl", c.Session.TTL),
 		slog.String("log_level", c.Log.Level.String()),
 		slog.String("log_format", string(c.Log.Format)),
 		slog.String("timezone", c.Timezone.String()),
