@@ -24,9 +24,7 @@ type command struct {
 func commands() []command {
 	commands := []command{
 		{"serve", "run the HTTP server", runServe},
-		{"migrate", "apply or roll back database migrations", func(context.Context, config.Config, []string) error {
-			return fmt.Errorf("migrate: %w", errNotImplemented)
-		}},
+		{"migrate", "apply or roll back database migrations (up|down|status|version)", runMigrate},
 		{"seed", "load the demo dataset", func(context.Context, config.Config, []string) error {
 			return fmt.Errorf("seed: %w", errNotImplemented)
 		}},

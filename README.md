@@ -26,6 +26,22 @@ make check   # what CI runs: generate, css, vet, test, lint
 make help    # every target
 ```
 
+Database schema:
+
+```
+make migrate                        # apply pending migrations
+make migrate-status                 # what is applied, what is pending
+make migration name=add_styles      # scaffold the next one
+```
+
+Migrations are embedded in the binary.
+
+The tests that need a real Postgres — the transaction runner and the migrations — skip unless `TEST_DATABASE_URL` is set. With the stack up:
+
+```
+TEST_DATABASE_URL=postgres://pilam:pilam@localhost:5433/pilam?sslmode=disable make test
+```
+
 Two kinds of file are generated and gitignored: `*_templ.go` (from `.templ` sources, via `make generate`) and `internal/http/static/css/app.css` (via `make css`). Both are rebuilt by any target that needs them, so a fresh clone only ever needs a `make` target, never a manual step.
 
 ## Toolchain

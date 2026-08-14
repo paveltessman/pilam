@@ -14,6 +14,8 @@ require (
 	github.com/Oudwins/tailwind-merge-go v0.2.3
 	github.com/a-h/templ v0.3.1020
 	github.com/google/uuid v1.6.0
+	github.com/jackc/pgx/v5 v5.10.0
+	github.com/pressly/goose/v3 v3.27.3
 	github.com/templui/templui v1.13.0
 )
 
@@ -151,7 +153,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/pgx/v5 v5.10.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/jgautheron/goconst v1.10.0 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
@@ -211,7 +212,6 @@ require (
 	github.com/pingcap/log v1.1.0 // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20260418072757-ce92298d1124 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/pressly/goose/v3 v3.27.3 // indirect
 	github.com/prometheus/client_golang v1.12.1 // indirect
 	github.com/prometheus/client_model v0.2.0 // indirect
 	github.com/prometheus/common v0.32.1 // indirect

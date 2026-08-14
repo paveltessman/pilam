@@ -10,6 +10,7 @@ import (
 
 	pilamhttp "github.com/paveltessman/pilam/internal/http"
 	"github.com/paveltessman/pilam/internal/platform/config"
+	"github.com/paveltessman/pilam/internal/postgres"
 )
 
 const readHeaderTimeout = 5 * time.Second
@@ -22,9 +23,16 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 
 	slog.Info("configuration", "config", cfg)
 
+	db, err := postgres.Open(ctx, cfg.Database)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	slog.Info("connected to postgres")
+
 	srv := &http.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           pilamhttp.NewRouter(),
+		Handler:           pilamhttp.NewRouter(pilamhttp.Deps{DB: db}),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

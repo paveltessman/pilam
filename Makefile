@@ -93,6 +93,10 @@ run: generate css ## Run the server on the host
 
 .PHONY: dev
 dev: css ## Run the server with live reload (used inside the dev container)
+	@# compose waits for the database to be healthy before starting this, so
+	@# `make up` on a fresh volume brings the schema with it. Migrations are
+	@# additive and applying them is idempotent, so a restart is a no-op.
+	go run ./cmd/pilam migrate up
 	@# Two watchers: Tailwind rewrites app.css (unminified, for readable
 	@# devtools), air rebuilds and restarts the server. app.css is embedded, so
 	@# a stylesheet change also triggers a Go rebuild — that is intended.
@@ -128,8 +132,23 @@ fmt: ## Format Go and templ sources
 ## ---------------------------------------------------------------- database
 
 .PHONY: migrate
-migrate: ## Apply database migrations
+migrate: ## Apply pending database migrations
 	go run ./cmd/pilam migrate up
+
+.PHONY: migrate-down
+migrate-down: ## Roll back the most recent migration
+	go run ./cmd/pilam migrate down
+
+.PHONY: migrate-status
+migrate-status: ## Show which migrations are applied
+	go run ./cmd/pilam migrate status
+
+.PHONY: migration
+migration: ## Scaffold a migration: make migration name=add_styles
+	@test -n "$(name)" || { echo "usage: make migration name=add_styles" >&2; exit 1; }
+	@# -s numbers sequentially rather than by timestamp. With a
+	@# linear history the ordering is easier to read and the file names shorter.
+	go tool goose -dir db/migrations -s create $(name) sql
 
 .PHONY: seed
 seed: ## Load the demo dataset

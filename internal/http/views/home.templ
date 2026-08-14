@@ -20,11 +20,11 @@ templ Home() {
 				<span class="text-sm">Server runs!</span>
 				<span class="ml-auto">
 					@button.Button(button.Props{
-						Href:    "/health",
+						Href:    "/healthz",
 						Variant: button.VariantOutline,
 						Size:    button.SizeSm,
 					}) {
-						/health
+						health
 					}
 				</span>
 			</div>
