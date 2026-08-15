@@ -22,7 +22,7 @@ func openTestDB(t *testing.T) *DB {
 
 	url := os.Getenv(urlEnv)
 	if url == "" {
-		t.Skipf("%s is unset: skipping the tests that need a database", urlEnv)
+		t.Fatalf("This test needs a database. Make sure db is running and %s is set", urlEnv)
 	}
 
 	ctx := t.Context()

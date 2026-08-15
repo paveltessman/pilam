@@ -42,10 +42,12 @@ The tests that need a real Postgres — the transaction runner and the migration
 TEST_DATABASE_URL=postgres://pilam:pilam@localhost:5433/pilam?sslmode=disable make test
 ```
 
+`make test` and `make check` run the suite through `gotestsum`.
+
 Two kinds of file are generated and gitignored: `*_templ.go` (from `.templ` sources, via `make generate`) and `internal/http/static/css/app.css` (via `make css`). Both are rebuilt by any target that needs them, so a fresh clone only ever needs a `make` target, never a manual step.
 
 ## Toolchain
 
-Go tools — `templ`, `sqlc`, `goose`, `golangci-lint`, `air` — are pinned as `tool` directives in `go.mod` and run through `go tool`. The two that are not Go modules, the Tailwind standalone CLI and the templUI CLI, are fetched into `./bin` by `make tools`.
+Go tools — `templ`, `sqlc`, `goose`, `golangci-lint`, `air`, `gotestsum` — are pinned as `tool` directives in `go.mod` and run through `go tool`. The two that are not Go modules, the Tailwind standalone CLI and the templUI CLI, are fetched into `./bin` by `make tools`.
 
 templUI components are vendored into `internal/http/views/ui/` by the templUI CLI (`bin/templui add <component>`) rather than imported. They are third-party source: update them with the CLI, do not edit them by hand. The linter is configured to skip them.

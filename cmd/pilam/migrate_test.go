@@ -14,7 +14,7 @@ const urlEnv = "TEST_DATABASE_URL"
 func TestMigrateUpAndDown(t *testing.T) {
 	url := os.Getenv(urlEnv)
 	if url == "" {
-		t.Skipf("%s is unset: skipping the tests that need a database", urlEnv)
+		t.Fatalf("This test needs a database. Make sure db is running and %s is set", urlEnv)
 	}
 	cfg := config.Config{Database: config.Database{URL: url}}
 	ctx := t.Context()

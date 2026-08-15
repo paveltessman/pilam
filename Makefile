@@ -1,8 +1,8 @@
 # pilam — developer entrypoints.
 #
-# Go tools (templ, sqlc, goose, golangci-lint, air) are pinned in go.mod and run
-# via `go tool`. The two non-Go tools — the Tailwind standalone binary and the
-# templUI CLI — are fetched into ./bin by `make tools`.
+# Go tools (templ, sqlc, goose, golangci-lint, air, gotestsum) are pinned in
+# go.mod and run via `go tool`. The two non-Go tools — the Tailwind standalone
+# binary and the templUI CLI — are fetched into ./bin by `make tools`.
 
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
@@ -106,9 +106,11 @@ dev: css ## Run the server with live reload (used inside the dev container)
 
 ## ---------------------------------------------------------------- quality
 
+GOTEST := go tool gotestsum --format dots-v2 --format-hide-empty-pkg --
+
 .PHONY: test
 test: generate css ## Run the test suite
-	go test ./...
+	$(GOTEST) ./...
 
 .PHONY: lint
 lint: generate css ## Run golangci-lint
@@ -121,7 +123,7 @@ check: generate css ## Everything CI would run: tidy, vet, test, lint
 	@# invisible locally until it breaks a fresh clone.
 	go mod tidy -diff
 	go vet ./...
-	go test ./...
+	$(GOTEST) ./...
 	go tool golangci-lint run
 
 .PHONY: fmt

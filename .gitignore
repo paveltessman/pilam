@@ -4,6 +4,7 @@
 
 # Local environment
 .env
+.setenv
 
 # Generated: `make generate` and `make css` recreate these from source.
 *_templ.go
