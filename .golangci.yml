@@ -2,6 +2,11 @@ version: "2"
 
 linters:
   default: standard
+  enable:
+    - exhaustive
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: false
   exclusions:
     # templ writes a "Code generated" header; issues in those files are not ours.
     generated: lax
