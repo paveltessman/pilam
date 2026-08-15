@@ -3,19 +3,40 @@ package http
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/platform/clock"
+	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/session"
 )
 
 type stubPinger struct{ err error }
 
 func (p stubPinger) Ping(context.Context) error { return p.err }
 
+// deps is what the composition root would have built, with the database
+// swapped for a stub and the log thrown away.
+func deps() Deps {
+	d := Deps{
+		DB:              stubPinger{},
+		Logger:          logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
+		IDs:             ids.NewGenerator(),
+		SessionMgr:      session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
+		ResolveIdentity: auth.Resolve,
+	}
+	return d
+}
+
 func get(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
-	return getWith(t, Deps{DB: stubPinger{}}, path)
+	return getWith(t, deps(), path)
 }
 
 func getWith(t *testing.T, deps Deps, path string) *httptest.ResponseRecorder {
@@ -36,8 +57,9 @@ func TestHealthReportsOKWhenTheDatabaseAnswers(t *testing.T) {
 }
 
 func TestHealthReportsUnavailableWhenTheDatabaseDoesNot(t *testing.T) {
-	deps := Deps{DB: stubPinger{err: errors.New("connection refused")}}
-	rec := getWith(t, deps, "/healthz")
+	broken := deps()
+	broken.DB = stubPinger{err: errors.New("connection refused")}
+	rec := getWith(t, broken, "/healthz")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}

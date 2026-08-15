@@ -8,8 +8,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/paveltessman/pilam/internal/auth"
 	pilamhttp "github.com/paveltessman/pilam/internal/http"
+	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
+	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/session"
 	"github.com/paveltessman/pilam/internal/postgres"
 )
 
@@ -30,9 +34,18 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 	defer db.Close()
 	slog.Info("connected to postgres")
 
+	clk := clock.New(cfg.Timezone)
+	sessionMgr := session.New(cfg.Session.Secret, cfg.Session.TTL, clk)
+
 	srv := &http.Server{
-		Addr:              cfg.HTTP.Addr,
-		Handler:           pilamhttp.NewRouter(pilamhttp.Deps{DB: db}),
+		Addr: cfg.HTTP.Addr,
+		Handler: pilamhttp.NewRouter(pilamhttp.Deps{
+			DB:              db,
+			Logger:          slog.Default(),
+			IDs:             ids.NewGenerator(),
+			SessionMgr:      sessionMgr,
+			ResolveIdentity: auth.Resolve,
+		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

@@ -3,14 +3,18 @@ package http
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/a-h/templ"
 
+	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/static"
 	"github.com/paveltessman/pilam/internal/http/views"
+	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/session"
 )
 
 // How long the health check gives the database to answer.
@@ -21,19 +25,54 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// Deps is everything the router hands to handlers, built in the composition root.
 type Deps struct {
-	DB Pinger
+	DB              Pinger
+	Logger          *slog.Logger
+	IDs             ids.Generator
+	SessionMgr      *session.Manager
+	ResolveIdentity middleware.ResolveIdentityFunc
 }
 
 func NewRouter(deps Deps) http.Handler {
+	switch {
+	case deps.DB == nil:
+		panic("http: nil database")
+	case deps.Logger == nil:
+		panic("http: nil logger")
+	case deps.IDs == nil:
+		panic("http: nil id generator")
+	case deps.SessionMgr == nil:
+		panic("http: nil session manager")
+	case deps.ResolveIdentity == nil:
+		panic("http: nil identity resolver")
+	}
+
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", static.Handler()))
 	mux.HandleFunc("GET /healthz", reportHealth(deps.DB))
 	mux.Handle("GET /{$}", templ.Handler(views.Home()))
 
-	return mux
+	// The order of middleware chain:
+	//   - request id first, so that every line the logger writes is tagged with it;
+	//   - recover inside the logger, so a panicking request still produces its
+	//     completion line, with the 500 it actually returned;
+	//   - session before identity;
+	//   - identity resolves what session read;
+	//   - CSRF after identity, so a rejected cross-origin write is logged with the
+	//     actor that attempted it;
+	//   - HTMX last — it only records what the request said about itself.
+	chain := middleware.Chain(
+		middleware.RequestID(deps.IDs),
+		middleware.Logger(deps.Logger),
+		middleware.Recover(),
+		middleware.Session(deps.SessionMgr),
+		middleware.Identity(deps.ResolveIdentity),
+		middleware.CSRF(),
+		middleware.HTMX(),
+	)
+
+	return chain(mux)
 }
 
 // reportHealth answers with the state of the dependencies the process cannot

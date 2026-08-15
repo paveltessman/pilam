@@ -45,6 +45,9 @@ func New(secret []byte, ttl time.Duration, c clock.Clock) *Manager {
 	return &Manager{secret: secret, ttl: ttl, clock: c}
 }
 
+// TTL is how long an issued session lasts.
+func (m *Manager) TTL() time.Duration { return m.ttl }
+
 // Issue returns the signed value for subject
 func (m *Manager) Issue(subject string) string {
 	expires := m.clock.Now().Add(m.ttl)

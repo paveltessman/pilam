@@ -26,3 +26,9 @@ const (
 	LoginPassword = "Пароль"
 	LoginFailed   = "Неверный логин или пароль"
 )
+
+// The failures in the http middleware chain
+const (
+	ErrorUnexpected = "Что-то пошло не так. Попробуйте ещё раз."
+	ErrorForbidden  = "Запрос отклонён."
+)
