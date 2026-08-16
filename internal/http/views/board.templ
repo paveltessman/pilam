@@ -1,0 +1,34 @@
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/http/views/ui/button"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
+
+// Board is the post-login destination. It is empty until S2 fills it with the
+// season's cards in P6. What it proves now is that a login lands somewhere
+// behind the guard and stays there across a refresh.
+templ Board() {
+	@Layout(labels.NavBoard) {
+		@boardHeader()
+		<main class="mx-auto w-full max-w-5xl px-6 py-16">
+			<div class="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+				<p>Сезон пока пуст.</p>
+			</div>
+		</main>
+	}
+}
+
+templ boardHeader() {
+	<header class="border-b">
+		<div class="mx-auto flex w-full max-w-5xl items-center gap-4 px-6 py-4">
+			<span class="text-lg font-semibold tracking-tight">pilam</span>
+			<nav class="text-sm text-muted-foreground">{ labels.NavBoard }</nav>
+			<form method="post" action="/logout" class="ml-auto">
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.NavLogOut }
+				}
+			</form>
+		</div>
+	</header>
+}

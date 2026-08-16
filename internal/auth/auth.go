@@ -5,7 +5,7 @@
 //
 // The shape is chosen so real accounts can arrive without a rewrite. Callers
 // receive an Identity, never a username string, and Identity already carries a
-// Role. Password checking — Authenticate — lands with the login screen.
+// Role.
 package auth
 
 import (

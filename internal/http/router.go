@@ -56,7 +56,14 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", static.Handler()))
 	mux.HandleFunc("GET /healthz", reportHealth(deps.DB))
 	mux.HandleFunc("GET /media/{key...}", serveMedia(deps.Media))
-	mux.Handle("GET /{$}", templ.Handler(views.Home()))
+
+	mux.HandleFunc("GET "+loginPath, showLogin())
+	mux.HandleFunc("POST "+loginPath, submitLogin(deps.SessionMgr))
+	mux.HandleFunc("POST "+logoutPath, submitLogout())
+
+	// Every screen from here down needs a login.
+	guard := middleware.RequireIdentity(loginPath)
+	mux.Handle("GET /{$}", guard(templ.Handler(views.Board())))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;

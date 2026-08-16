@@ -1,0 +1,88 @@
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/http/views/ui/button"
+	"github.com/paveltessman/pilam/internal/http/views/ui/input"
+	"github.com/paveltessman/pilam/internal/http/views/ui/label"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+	"github.com/paveltessman/pilam/internal/platform/validate"
+)
+
+const (
+	FieldUsername = "username"
+	FieldPassword = "password"
+)
+
+// LoginForm is what the login screen renders: what the user typed, and what
+// was wrong with it.
+type LoginForm struct {
+	Username string
+	Errors   validate.FieldErrors
+}
+
+// Rejected reports whether the credential as a whole was refused, as opposed
+// to one of the two fields being empty.
+func (f LoginForm) Rejected() bool {
+	_, found := f.Errors.Get("")
+	return found
+}
+
+templ Login(form LoginForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	@Layout(labels.LoginTitle) {
+		<main class="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-6">
+			<form
+				method="post"
+				action="/login"
+				class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground"
+			>
+				<h1 class="text-2xl font-semibold tracking-tight">{ labels.LoginTitle }</h1>
+				if form.Rejected() {
+					<p
+						role="alert"
+						class="rounded-md border border-destructive/50 px-3 py-2 text-sm text-destructive"
+					>
+						{ labels.LoginFailed }
+					</p>
+				}
+				@loginField(FieldUsername, labels.LoginName, messages[FieldUsername]) {
+					@input.Input(input.Props{
+						ID:         FieldUsername,
+						Name:       FieldUsername,
+						Value:      form.Username,
+						HasError:   messages[FieldUsername] != "",
+						Attributes: templ.Attributes{"autocomplete": "username", "autofocus": true},
+					})
+				}
+				@loginField(FieldPassword, labels.LoginPassword, messages[FieldPassword]) {
+					@input.Input(input.Props{
+						ID:       FieldPassword,
+						Name:     FieldPassword,
+						Type:     input.TypePassword,
+						HasError: messages[FieldPassword] != "",
+						// The toggle is the one part of this component that
+						// needs JavaScript, and no asset route serves it yet.
+						NoTogglePassword: true,
+						Attributes:       templ.Attributes{"autocomplete": "current-password"},
+					})
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+					{ labels.ActionLogIn }
+				}
+			</form>
+		</main>
+	}
+}
+
+// loginField wraps one input in its label and its error message.
+templ loginField(name, text, message string) {
+	<div class="space-y-2">
+		@label.Label(label.Props{For: name, Error: message}) {
+			{ text }
+		}
+		{ children... }
+		if message != "" {
+			<p class="text-sm text-destructive">{ message }</p>
+		}
+	</div>
+}

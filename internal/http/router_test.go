@@ -14,6 +14,7 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 	"github.com/paveltessman/pilam/internal/platform/media"
 	"github.com/paveltessman/pilam/internal/platform/session"
@@ -81,17 +82,16 @@ func TestHealthReportsUnavailableWhenTheDatabaseDoesNot(t *testing.T) {
 	}
 }
 
-func TestHomeRendersStyledPage(t *testing.T) {
-	rec := get(t, "/")
+func TestPagesAreStyledAndRenderComponents(t *testing.T) {
+	rec := get(t, loginPath)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	body := rec.Body.String()
 	for _, want := range []string{
-		`<title>pilam</title>`,
+		`<title>` + labels.LoginTitle + `</title>`,
 		`/static/css/app.css`,
-		// From the vendored templUI button: proves the component pipeline.
-		`href="/healthz"`,
+		`type="submit"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page does not contain %q", want)
