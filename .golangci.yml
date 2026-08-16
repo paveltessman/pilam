@@ -3,10 +3,29 @@ version: "2"
 linters:
   default: standard
   enable:
+    - depguard
     - exhaustive
   settings:
     exhaustive:
       default-signifies-exhaustive: false
+
+    depguard:
+      rules:
+        domain:
+          files:
+            - $all
+            - "!**/cmd/**"
+            - "!**/db/**"
+            - "!**/internal/http/**"
+            - "!**/internal/platform/**"
+            - "!**/internal/postgres/**"
+          deny:
+            - pkg: net/http
+              desc: transport belongs to internal/http.
+            - pkg: github.com/jackc/pgx
+              desc: persistence belongs to internal/postgres.
+            - pkg: github.com/a-h/templ
+              desc: rendering belongs to internal/http/views.
   exclusions:
     # templ writes a "Code generated" header; issues in those files are not ours.
     generated: lax
