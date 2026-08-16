@@ -13,6 +13,7 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/media"
 	"github.com/paveltessman/pilam/internal/platform/session"
 	"github.com/paveltessman/pilam/internal/postgres"
 )
@@ -34,6 +35,12 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 	defer db.Close()
 	slog.Info("connected to postgres")
 
+	mediaStore, err := media.New(cfg.Media)
+	if err != nil {
+		return err
+	}
+	slog.Info("media store ready", "dir", cfg.Media.Dir)
+
 	clk := clock.New(cfg.Timezone)
 	sessionMgr := session.New(cfg.Session.Secret, cfg.Session.TTL, clk)
 
@@ -43,6 +50,7 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 			DB:              db,
 			Logger:          slog.Default(),
 			IDs:             ids.NewGenerator(),
+			Media:           mediaStore,
 			SessionMgr:      sessionMgr,
 			ResolveIdentity: auth.Resolve,
 		}),

@@ -14,6 +14,7 @@ import (
 	"github.com/paveltessman/pilam/internal/http/views"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/media"
 	"github.com/paveltessman/pilam/internal/platform/session"
 )
 
@@ -29,6 +30,7 @@ type Deps struct {
 	DB              Pinger
 	Logger          *slog.Logger
 	IDs             ids.Generator
+	Media           media.Store
 	SessionMgr      *session.Manager
 	ResolveIdentity middleware.ResolveIdentityFunc
 }
@@ -41,6 +43,8 @@ func NewRouter(deps Deps) http.Handler {
 		panic("http: nil logger")
 	case deps.IDs == nil:
 		panic("http: nil id generator")
+	case deps.Media == nil:
+		panic("http: nil media store")
 	case deps.SessionMgr == nil:
 		panic("http: nil session manager")
 	case deps.ResolveIdentity == nil:
@@ -51,6 +55,7 @@ func NewRouter(deps Deps) http.Handler {
 
 	mux.Handle("GET /static/", http.StripPrefix("/static/", static.Handler()))
 	mux.HandleFunc("GET /healthz", reportHealth(deps.DB))
+	mux.HandleFunc("GET /media/{key...}", serveMedia(deps.Media))
 	mux.Handle("GET /{$}", templ.Handler(views.Home()))
 
 	// The order of middleware chain:
