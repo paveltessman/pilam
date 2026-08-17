@@ -75,7 +75,7 @@ $(TEMPLUI):
 .PHONY: generate
 generate: ## Run all code generators (templ, sqlc)
 	go tool templ generate
-	@if [ -f sqlc.yaml ]; then go tool sqlc generate; fi
+	go tool sqlc generate
 
 .PHONY: css
 css: $(TAILWIND) ## Compile Tailwind into the embedded stylesheet
@@ -179,6 +179,7 @@ logs: ## Follow the app logs
 clean: ## Remove build output and generated files (keeps ./bin)
 	rm -rf tmp $(CSS_OUT) $(BIN)/pilam
 	find . -name '*_templ.go' -delete
+	find . -name '*_sqlc.go' -delete
 
 .PHONY: distclean
 distclean: clean ## Also remove the fetched tools — they are a large download

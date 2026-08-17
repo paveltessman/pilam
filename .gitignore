@@ -9,4 +9,5 @@
 # Generated: `make generate` and `make css` recreate these from source.
 *_templ.go
 *_templ.txt
+*_sqlc.go
 /internal/http/static/css/app.css
