@@ -1,6 +1,6 @@
 # pilam
 
-A PLM for a fashion brand's seasonal calendar. See [`docs/v1`](docs/v1) for the PRD, the architecture, the decision ledger, and the implementation plan.
+A PLM for a fashion brand's seasonal calendar. See [`docs/v1`](docs/v1).
 
 ## Run
 
