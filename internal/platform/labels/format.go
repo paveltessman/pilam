@@ -104,6 +104,10 @@ func Count(n int, one, few, many string) string {
 	return Number(n) + nbsp + Plural(n, one, few, many)
 }
 
+// Chars counts the characters of a length rule, in a message and in the hint
+// that states the rule before the user meets it.
+func Chars(n int) string { return Count(n, "символ", "символа", "символов") }
+
 // The nouns the screens count. Styles is the drop heading on S2, Days is S5's
 // slip summary and S7's mean slack, Times is how often a forecast has moved.
 func Styles(n int) string    { return Count(n, "модель", "модели", "моделей") }

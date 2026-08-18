@@ -58,18 +58,7 @@ func RequireIdentity(loginPath string) Middleware {
 				return
 			}
 
-			// A 303 would be swapped into the page as HTML by HTMX, because the
-			// browser follows the redirect transparently and hands htmx the
-			// login page as if it were the fragment that was asked for.
-			// HX-Redirect navigates the whole window instead, which is what an
-			// expired session should do.
-			if IsHTMX(r.Context()) {
-				w.Header().Set("HX-Redirect", loginPath)
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-
-			http.Redirect(w, r, loginPath, http.StatusSeeOther)
+			SendTo(w, r, loginPath)
 		}
 		return http.HandlerFunc(handle)
 	}

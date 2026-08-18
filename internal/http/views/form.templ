@@ -1,0 +1,30 @@
+package views
+
+import "github.com/paveltessman/pilam/internal/http/views/ui/label"
+
+// fieldProps is one input of a form, without the input itself: the label above
+// it, and the one line under it.
+//
+// That line carries Message when the field was rejected, and Hint the rest of
+// the time.
+type fieldProps struct {
+	Name    string
+	Label   string
+	Hint    string
+	Message string
+}
+
+// formField wraps one input in its label and its line.
+templ formField(f fieldProps) {
+	<div class="space-y-2">
+		@label.Label(label.Props{For: f.Name, Error: f.Message}) {
+			{ f.Label }
+		}
+		{ children... }
+		if f.Message != "" {
+			<p class="text-sm text-destructive">{ f.Message }</p>
+		} else if f.Hint != "" {
+			<p class="text-sm text-muted-foreground">{ f.Hint }</p>
+		}
+	</div>
+}

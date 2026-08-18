@@ -15,17 +15,33 @@ import (
 const (
 	testEmail  = "ada@example.com"
 	testPasswd = "a long enough password"
+
+	// The user who never changed the first password.
+	expiredEmail  = "grace@example.com"
+	expiredPasswd = "the first password"
 )
 
-var testUserID = ids.MustParse("01912345-6789-7abc-def0-123456789abc")
+var (
+	testUserID    = ids.MustParse("01912345-6789-7abc-def0-123456789abc")
+	expiredUserID = ids.MustParse("01912345-6789-7abc-def0-123456789abd")
+)
 
-var testHash = sync.OnceValue(func() string {
-	hash, err := password.Hash(testPasswd)
-	if err != nil {
-		panic(err)
-	}
-	return hash
-})
+// Hashing costs about as much as the rest of a test, so each password is
+// hashed once for the whole package.
+var (
+	testHash    = hashOnce(testPasswd)
+	expiredHash = hashOnce(expiredPasswd)
+)
+
+func hashOnce(plain string) func() string {
+	return sync.OnceValue(func() string {
+		hash, err := password.Hash(plain)
+		if err != nil {
+			panic(err)
+		}
+		return hash
+	})
+}
 
 type fakeUsers struct {
 	mu   sync.Mutex
@@ -33,7 +49,7 @@ type fakeUsers struct {
 }
 
 func newFakeUsers() *fakeUsers {
-	user := auth.User{
+	users := []auth.User{{
 		ID:           testUserID,
 		Email:        testEmail,
 		FirstName:    "Ada",
@@ -42,8 +58,23 @@ func newFakeUsers() *fakeUsers {
 		Role:         auth.MemberRole,
 		Active:       true,
 		SessionEpoch: 1,
+	}, {
+		ID:            expiredUserID,
+		Email:         expiredEmail,
+		FirstName:     "Grace",
+		LastName:      "Hopper",
+		PasswdHash:    expiredHash(),
+		Role:          auth.MemberRole,
+		Active:        true,
+		SessionEpoch:  1,
+		PasswdExpired: true,
+	}}
+
+	rows := make(map[ids.ID]auth.User, len(users))
+	for _, user := range users {
+		rows[user.ID] = user
 	}
-	return &fakeUsers{rows: map[ids.ID]auth.User{user.ID: user}}
+	return &fakeUsers{rows: rows}
 }
 
 func (f *fakeUsers) ByID(_ context.Context, id ids.ID) (auth.User, error) {

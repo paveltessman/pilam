@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 
@@ -108,7 +107,7 @@ const (
 // against field. A password inside the range returns nil.
 func Check(field, plain string) error {
 	var v validate.Validator
-	v.AtLeast(field, utf8.RuneCountInString(plain), MinLen)
+	v.MinLen(field, plain, MinLen)
 	v.MaxLen(field, plain, MaxLen)
 	return v.Err()
 }

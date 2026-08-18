@@ -17,9 +17,15 @@ func Message(e validate.FieldError) string {
 
 	case validate.TooLong:
 		if limit, err := strconv.Atoi(e.Arg); err == nil {
-			return "Максимум " + Count(limit, "символ", "символа", "символов")
+			return "Максимум " + Chars(limit)
 		}
 		return "Слишком длинный текст"
+
+	case validate.TooShort:
+		if limit, err := strconv.Atoi(e.Arg); err == nil {
+			return "Минимум " + Chars(limit)
+		}
+		return "Слишком короткий текст"
 
 	case validate.TooSmall:
 		if e.Arg == "" {
@@ -47,6 +53,9 @@ func Message(e validate.FieldError) string {
 
 	case validate.Incorrect:
 		return "Неверное значение"
+
+	case validate.Mismatch:
+		return "Значения не совпадают"
 
 	default:
 		// A code added to validate and not added here.

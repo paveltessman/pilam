@@ -3,12 +3,15 @@ package password_test
 import (
 	"encoding/base64"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 
 	"github.com/paveltessman/pilam/internal/platform/password"
+	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
 const plain = "correct horse battery staple"
@@ -184,6 +187,45 @@ func TestDummyIsFixedValidHash(t *testing.T) {
 	}
 	if needsRehash {
 		t.Error("Dummy carries parameters other than the current ones")
+	}
+}
+
+func TestCheckHoldsTheLengthPolicy(t *testing.T) {
+	testData := map[string]struct {
+		plain string
+		want  validate.FieldErrors
+	}{
+		"one below the minimum": {
+			strings.Repeat("a", password.MinLen-1),
+			validate.FieldErrors{{Field: "passwd", Code: validate.TooShort, Arg: "12"}},
+		},
+		"exactly the minimum": {strings.Repeat("a", password.MinLen), nil},
+		"exactly the maximum": {strings.Repeat("a", password.MaxLen), nil},
+		"one above the maximum": {
+			strings.Repeat("a", password.MaxLen+1),
+			validate.FieldErrors{{Field: "passwd", Code: validate.TooLong, Arg: "128"}},
+		},
+		"twelve Cyrillic characters": {strings.Repeat("\u044f", password.MinLen), nil},
+	}
+
+	for name, tc := range testData {
+		t.Run(name, func(t *testing.T) {
+			err := password.Check("passwd", tc.plain)
+			if tc.want == nil {
+				if err != nil {
+					t.Fatalf("Check refused %d characters: %v", utf8.RuneCountInString(tc.plain), err)
+				}
+				return
+			}
+
+			got, ok := validate.From(err)
+			if !ok {
+				t.Fatalf("err = %v, want field errors", err)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("got %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 
