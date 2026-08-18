@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -25,6 +26,9 @@ const (
 )
 
 func (r Role) Valid() bool { return r == MemberRole || r == RootRole }
+
+// Allows reports whether the role covers what required asks for.
+func (r Role) Allows(required Role) bool { return r == RootRole || r == required }
 
 // The fields a rejection from this package names. The view layer maps them onto
 // its own inputs.
@@ -45,6 +49,11 @@ var (
 	ErrInactive    = errors.New("auth: user is deactivated")
 	ErrNoUser      = errors.New("auth: no such user")
 	ErrEmailTaken  = errors.New("auth: email already taken")
+
+	// ErrSelfLockout is a user removing their own access: deactivating
+	// themselves, or dropping their own root role. Somebody else must do it,
+	// so that the last root can't lock the section against everybody.
+	ErrSelfLockout = errors.New("auth: a user can't remove their own access")
 )
 
 // Identity is the authenticated user, as every layer below transport sees them.
@@ -77,6 +86,7 @@ type User struct {
 	Active        bool
 	SessionEpoch  int
 	PasswdExpired bool
+	UpdatedAt     time.Time
 }
 
 func (u User) Identity() Identity {
@@ -95,11 +105,39 @@ func (u User) Principal() Principal {
 	return Principal{UserID: u.ID, Epoch: u.SessionEpoch}
 }
 
+// Account is one user as the users section shows them.
+type Account struct {
+	ID        ids.ID
+	Email     string
+	FirstName string
+	LastName  string
+	Role      Role
+	Active    bool
+	UpdatedAt time.Time
+}
+
+func (u User) Account() Account {
+	account := Account{
+		ID:        u.ID,
+		Email:     u.Email,
+		FirstName: u.FirstName,
+		LastName:  u.LastName,
+		Role:      u.Role,
+		Active:    u.Active,
+		UpdatedAt: u.UpdatedAt,
+	}
+	return account
+}
+
 // Users is the store of user rows. ByID and ByEmail return ErrNoUser when
 // nothing matches, and Create returns ErrEmailTaken on a duplicate address.
 type Users interface {
 	ByID(ctx context.Context, id ids.ID) (User, error)
 	ByEmail(ctx context.Context, email string) (User, error)
+
+	// List returns every user, active and inactive, ordered by email.
+	List(ctx context.Context) ([]User, error)
+
 	Create(ctx context.Context, user User) error
 	Update(ctx context.Context, user User) error
 }
@@ -218,17 +256,24 @@ func (s *Service) Create(ctx context.Context, in NewUser) (User, error) {
 		if err := s.users.Create(ctx, user); err != nil {
 			return err
 		}
-		err = s.trail.Record(ctx, s.actor(ctx, user.ID), audit.Change{
-			Entity:   audit.EntityUser,
-			EntityID: user.ID,
-			Action:   audit.ActionCreated,
-		})
-		return err
+		return s.trail.Record(ctx, s.actor(ctx, user.ID), userChange(user.ID, audit.ActionCreated, "", "", ""))
 	})
 	if err != nil {
 		return User{}, err
 	}
 	return user, nil
+}
+
+// Invite creates a user with a generated first password, and hands the password
+// back in plain text.
+func (s *Service) Invite(ctx context.Context, in NewUser) (User, string, error) {
+	in.Passwd = password.Generate()
+
+	user, err := s.Create(ctx, in)
+	if err != nil {
+		return User{}, "", err
+	}
+	return user, in.Passwd, nil
 }
 
 // NewUser is the arguments for Create. Passwd is the first password, in plain text.
@@ -303,13 +348,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID ids.ID, current, ne
 	user.PasswdExpired = false
 	user.SessionEpoch++
 
-	change := audit.Change{
-		Entity:   audit.EntityUser,
-		EntityID: user.ID,
-		Action:   audit.ActionPasswdChanged,
-		FieldKey: FieldPasswd,
-		New:      audit.Marker,
-	}
+	change := userChange(user.ID, audit.ActionPasswdChanged, FieldPasswd, "", audit.Marker)
 	if err := s.write(ctx, user, change); err != nil {
 		return Principal{}, err
 	}
@@ -318,61 +357,140 @@ func (s *Service) ChangePassword(ctx context.Context, userID ids.ID, current, ne
 	return user.Principal(), nil
 }
 
-// SetActive turns a user on or off. Deactivating bumps the epoch, which ends
-// every session of that user on the next request.
-func (s *Service) SetActive(ctx context.Context, userID ids.ID, active bool) error {
-	user, err := s.users.ByID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("auth: loading user %s: %w", userID, err)
-	}
-	if user.Active == active {
-		return nil
-	}
-
-	user.Active = active
-	action := audit.ActionReactivated
-	if !active {
-		action = audit.ActionDeactivated
-		user.SessionEpoch++
-	}
-
-	err = s.write(ctx, user, audit.Change{
-		Entity:   audit.EntityUser,
-		EntityID: user.ID,
-		Action:   action,
-		FieldKey: FieldActive,
-		Old:      strconv.FormatBool(!active),
-		New:      strconv.FormatBool(active),
-	})
-	return err
+// UpdateParams is what the users section changes on a user who already exists.
+type UpdateParams struct {
+	FirstName string
+	LastName  string
+	Role      Role
+	Active    bool
 }
 
-// SetRole moves a user between the two roles.
-func (s *Service) SetRole(ctx context.Context, userID ids.ID, role Role) error {
-	if !role.Valid() {
-		return validate.Fail(FieldRole, validate.NotAllowed)
+// Update writes the edited fields and records one trail entry per field that
+// moved. It writes nothing at all when nothing moved.
+//
+// Deactivating bumps the epoch, which ends every session of that user on the
+// next request. A rename and a role change leave the sessions alone.
+func (s *Service) Update(ctx context.Context, userID ids.ID, in UpdateParams) error {
+	first := strings.TrimSpace(in.FirstName)
+	last := strings.TrimSpace(in.LastName)
+
+	var v validate.Validator
+	v.Required(FieldFirstName, first)
+	v.Required(FieldLastName, last)
+	v.Check(in.Role.Valid(), FieldRole, validate.NotAllowed)
+	if err := v.Err(); err != nil {
+		return err
 	}
 
 	user, err := s.users.ByID(ctx, userID)
 	if err != nil {
 		return fmt.Errorf("auth: loading user %s: %w", userID, err)
 	}
-	if user.Role == role {
-		return nil
+
+	if s.locksOut(ctx, user, in) {
+		return fmt.Errorf("%w: %s", ErrSelfLockout, user.ID)
 	}
 
-	previous := user.Role
-	user.Role = role
+	var changes []audit.Change
+	if first != user.FirstName {
+		changes = append(changes, userChange(user.ID, audit.ActionNameChanged, FieldFirstName, user.FirstName, first))
+		user.FirstName = first
+	}
+	if last != user.LastName {
+		changes = append(changes, userChange(user.ID, audit.ActionNameChanged, FieldLastName, user.LastName, last))
+		user.LastName = last
+	}
+	if in.Role != user.Role {
+		changes = append(changes, userChange(user.ID, audit.ActionRoleChanged, FieldRole, string(user.Role), string(in.Role)))
+		user.Role = in.Role
+	}
+	if in.Active != user.Active {
+		action := audit.ActionReactivated
+		if !in.Active {
+			action = audit.ActionDeactivated
+			user.SessionEpoch++
+		}
+		changes = append(changes, userChange(user.ID, action, FieldActive,
+			strconv.FormatBool(user.Active), strconv.FormatBool(in.Active)))
+		user.Active = in.Active
+	}
 
-	err = s.write(ctx, user, audit.Change{
+	if len(changes) == 0 {
+		return nil
+	}
+	return s.write(ctx, user, changes...)
+}
+
+// locksOut reports whether the edit takes the section away from the very user
+// making it: their own deactivation, or their own root role.
+func (s *Service) locksOut(ctx context.Context, user User, in UpdateParams) bool {
+	actor, ok := FromContext(ctx)
+	if !ok || actor.UserID != user.ID {
+		return false
+	}
+	return !in.Active || (user.Role == RootRole && in.Role != RootRole)
+}
+
+// ResetPassword gives a user a new first password and hands it back in plain text.
+func (s *Service) ResetPassword(ctx context.Context, userID ids.ID) (string, error) {
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("auth: loading user %s: %w", userID, err)
+	}
+
+	plain := password.Generate()
+	hash, err := password.Hash(plain)
+	if err != nil {
+		return "", fmt.Errorf("auth: hashing the new first password: %w", err)
+	}
+
+	user.PasswdHash = hash
+	user.PasswdExpired = true
+	user.SessionEpoch++
+
+	change := userChange(user.ID, audit.ActionPasswdReset, FieldPasswd, "", audit.Marker)
+	if err := s.write(ctx, user, change); err != nil {
+		return "", err
+	}
+
+	s.throttle.Reset(user.Email)
+	return plain, nil
+}
+
+// List returns every user the section shows, ordered by email.
+func (s *Service) List(ctx context.Context) ([]Account, error) {
+	users, err := s.users.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("auth: listing users: %w", err)
+	}
+
+	accounts := make([]Account, len(users))
+	for i, user := range users {
+		accounts[i] = user.Account()
+	}
+	return accounts, nil
+}
+
+// Account returns one user.
+func (s *Service) Account(ctx context.Context, userID ids.ID) (Account, error) {
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return Account{}, fmt.Errorf("auth: loading user %s: %w", userID, err)
+	}
+	return user.Account(), nil
+}
+
+// userChange is one stated fact about a user row.
+func userChange(userID ids.ID, action, field, old, next string) audit.Change {
+	change := audit.Change{
 		Entity:   audit.EntityUser,
-		EntityID: user.ID,
-		Action:   audit.ActionRoleChanged,
-		FieldKey: FieldRole,
-		Old:      string(previous),
-		New:      string(role),
-	})
-	return err
+		EntityID: userID,
+		Action:   action,
+		FieldKey: field,
+		Old:      old,
+		New:      next,
+	}
+	return change
 }
 
 // write stores one row and records what changed, in one transaction. A failure
