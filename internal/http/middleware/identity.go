@@ -8,12 +8,12 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
-type ResolveIdentityFunc func(ctx context.Context, subject string) (auth.Identity, error)
+type Resolver func(ctx context.Context, subject string) (auth.Identity, error)
 
 // Identity resolves the session's subject to the user it names and puts them in
 // the context.
-func Identity(resolve ResolveIdentityFunc) Middleware {
-	if resolve == nil {
+func Identity(resolver Resolver) Middleware {
+	if resolver == nil {
 		panic("middleware: nil identity resolver")
 	}
 
@@ -27,7 +27,7 @@ func Identity(resolve ResolveIdentityFunc) Middleware {
 				return
 			}
 
-			identity, err := resolve(r.Context(), subject)
+			identity, err := resolver(r.Context(), subject)
 			if err != nil {
 				logger.Warn("session names an unknown subject",
 					"subject", subject, "err", err)

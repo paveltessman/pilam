@@ -8,10 +8,27 @@ import (
 	"testing"
 
 	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
 const loginPath = "/login"
+
+const testSubject = "01912345-6789-7abc-def0-123456789abc:1"
+
+var testIdentity = auth.Identity{
+	UserID: ids.MustParse("01912345-6789-7abc-def0-123456789abc"),
+	Email:  "ada@example.com",
+	Role:   auth.MemberRole,
+}
+
+// resolveTestUser answers for testSubject and refuses every other subject.
+func resolveTestUser(_ context.Context, subject string) (auth.Identity, error) {
+	if subject != testSubject {
+		return auth.Identity{}, auth.ErrNotResolved
+	}
+	return testIdentity, nil
+}
 
 // authenticated returns a request whose session has already been resolved to
 // subject, as the session middleware would have left it.
@@ -31,20 +48,20 @@ func capturesIdentity(identity *auth.Identity, ok *bool) http.HandlerFunc {
 func TestIdentityResolvesTheSessionSubject(t *testing.T) {
 	var identity auth.Identity
 	var ok bool
-	serve(Identity(auth.Resolve), authenticated(auth.Subject), capturesIdentity(&identity, &ok))
+	serve(Identity(resolveTestUser), authenticated(testSubject), capturesIdentity(&identity, &ok))
 
 	if !ok {
 		t.Fatal("the request came out anonymous")
 	}
-	if identity.Subject != auth.Subject || identity.Role != auth.RoleManager {
-		t.Errorf("identity = %+v, want the manager", identity)
+	if identity != testIdentity {
+		t.Errorf("identity = %+v, want %+v", identity, testIdentity)
 	}
 }
 
 func TestIdentityLeavesAnonymousRequestAnonymous(t *testing.T) {
 	var identity auth.Identity
 	var ok bool
-	serve(Identity(auth.Resolve), httptest.NewRequest(http.MethodGet, "/", nil),
+	serve(Identity(resolveTestUser), httptest.NewRequest(http.MethodGet, "/", nil),
 		capturesIdentity(&identity, &ok))
 
 	if ok {
@@ -57,7 +74,7 @@ func TestIdentityLeavesAnonymousRequestAnonymous(t *testing.T) {
 func TestIdentityDiscardsSessionItCannotResolve(t *testing.T) {
 	var identity auth.Identity
 	var ok bool
-	rec := serve(Identity(auth.Resolve), authenticated("someone-else"), capturesIdentity(&identity, &ok))
+	rec := serve(Identity(resolveTestUser), authenticated("someone-else"), capturesIdentity(&identity, &ok))
 
 	if ok {
 		t.Errorf("identity = %+v, want none", identity)
@@ -71,11 +88,11 @@ func TestIdentityWidensTheRequestLogger(t *testing.T) {
 	logger, buf := capture()
 
 	rec := httptest.NewRecorder()
-	Chain(Logger(logger), Identity(auth.Resolve))(
+	Chain(Logger(logger), Identity(resolveTestUser))(
 		http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			logging.FromContext(r.Context()).Info("from the handler")
 		}),
-	).ServeHTTP(rec, authenticated(auth.Subject))
+	).ServeHTTP(rec, authenticated(testSubject))
 
 	var handlerLine map[string]any
 	for _, record := range records(t, buf) {
@@ -86,8 +103,8 @@ func TestIdentityWidensTheRequestLogger(t *testing.T) {
 	if handlerLine == nil {
 		t.Fatalf("the handler's line is missing: %s", buf)
 	}
-	if got := handlerLine["actor"]; got != auth.Subject {
-		t.Errorf("actor = %v, want %q", got, auth.Subject)
+	if got := handlerLine["actor"]; got != testIdentity.Email {
+		t.Errorf("actor = %v, want %q", got, testIdentity.Email)
 	}
 }
 
@@ -103,9 +120,9 @@ func TestIdentityPanicsWithoutResolver(t *testing.T) {
 func TestRequireIdentityAdmitsAuthenticatedRequest(t *testing.T) {
 	reached := false
 	rec := httptest.NewRecorder()
-	Chain(Identity(auth.Resolve), RequireIdentity(loginPath))(
+	Chain(Identity(resolveTestUser), RequireIdentity(loginPath))(
 		http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }),
-	).ServeHTTP(rec, authenticated(auth.Subject))
+	).ServeHTTP(rec, authenticated(testSubject))
 
 	if !reached {
 		t.Fatalf("the handler did not run; status = %d", rec.Code)
@@ -158,7 +175,7 @@ func TestIdentityReportsAResolverFailure(t *testing.T) {
 	rec := httptest.NewRecorder()
 	Chain(Logger(logger), Identity(resolve))(
 		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
-	).ServeHTTP(rec, authenticated(auth.Subject))
+	).ServeHTTP(rec, authenticated(testSubject))
 
 	var warned bool
 	for _, record := range records(t, buf) {
