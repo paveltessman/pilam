@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -29,12 +28,12 @@ func (p stubPinger) Ping(context.Context) error { return p.err }
 func deps(t *testing.T) Deps {
 	t.Helper()
 	d := Deps{
-		DB:              stubPinger{},
-		Logger:          logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
-		IDs:             ids.NewGenerator(),
-		Media:           mediaStore(t),
-		SessionMgr:      session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
-		ResolveIdentity: auth.Resolve,
+		DB:         stubPinger{},
+		Logger:     logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
+		IDs:        ids.NewGenerator(),
+		Media:      mediaStore(t),
+		SessionMgr: session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
+		AuthSvc:    authService(t),
 	}
 	return d
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/static"
 	"github.com/paveltessman/pilam/internal/http/views"
@@ -27,12 +28,12 @@ type Pinger interface {
 }
 
 type Deps struct {
-	DB              Pinger
-	Logger          *slog.Logger
-	IDs             ids.Generator
-	Media           media.Store
-	SessionMgr      *session.Manager
-	ResolveIdentity middleware.ResolveIdentityFunc
+	DB         Pinger
+	Logger     *slog.Logger
+	IDs        ids.Generator
+	Media      media.Store
+	SessionMgr *session.Manager
+	AuthSvc    *auth.Service
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -47,8 +48,8 @@ func NewRouter(deps Deps) http.Handler {
 		panic("http: nil media store")
 	case deps.SessionMgr == nil:
 		panic("http: nil session manager")
-	case deps.ResolveIdentity == nil:
-		panic("http: nil identity resolver")
+	case deps.AuthSvc == nil:
+		panic("http: nil auth service")
 	}
 
 	mux := http.NewServeMux()
@@ -58,7 +59,7 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /media/{key...}", serveMedia(deps.Media))
 
 	mux.HandleFunc("GET "+loginPath, showLogin())
-	mux.HandleFunc("POST "+loginPath, submitLogin(deps.SessionMgr))
+	mux.HandleFunc("POST "+loginPath, submitLogin(deps.SessionMgr, deps.AuthSvc))
 	mux.HandleFunc("POST "+logoutPath, submitLogout())
 
 	// Every screen from here down needs a login.
@@ -79,7 +80,7 @@ func NewRouter(deps Deps) http.Handler {
 		middleware.Logger(deps.Logger),
 		middleware.Recover(),
 		middleware.Session(deps.SessionMgr),
-		middleware.Identity(deps.ResolveIdentity),
+		middleware.Identity(deps.AuthSvc.Resolve),
 		middleware.CSRF(),
 		middleware.HTMX(),
 	)
