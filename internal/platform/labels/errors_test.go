@@ -31,6 +31,14 @@ func TestMessage(t *testing.T) {
 			validate.FieldError{Field: "color", Code: validate.TooLong, Arg: "11"},
 			"Максимум 11" + nbsp + "символов",
 		},
+		"too short": {
+			validate.FieldError{Field: "passwd", Code: validate.TooShort, Arg: "12"},
+			"Минимум 12" + nbsp + "символов",
+		},
+		"too short, one": {
+			validate.FieldError{Field: "passwd", Code: validate.TooShort, Arg: "1"},
+			"Минимум 1" + nbsp + "символ",
+		},
 		"too small": {
 			validate.FieldError{Field: "qty", Code: validate.TooSmall, Arg: "1"},
 			"Минимум 1",
@@ -59,6 +67,10 @@ func TestMessage(t *testing.T) {
 			validate.FieldError{Field: "password", Code: validate.Incorrect},
 			"Неверное значение",
 		},
+		"mismatch": {
+			validate.FieldError{Field: "repeat_passwd", Code: validate.Mismatch},
+			"Значения не совпадают",
+		},
 		"unknown code": {
 			validate.FieldError{Field: "article", Code: "not_a_real_code"},
 			unhandled,
@@ -79,6 +91,7 @@ func TestMessageWithoutItsBound(t *testing.T) {
 		want string
 	}{
 		"too long":  {validate.TooLong, "Слишком длинный текст"},
+		"too short": {validate.TooShort, "Слишком короткий текст"},
 		"too small": {validate.TooSmall, "Слишком маленькое значение"},
 		"too big":   {validate.TooBig, "Слишком большое значение"},
 	}
