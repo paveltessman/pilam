@@ -62,9 +62,17 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("POST "+loginPath, submitLogin(deps.SessionMgr, deps.AuthSvc))
 	mux.HandleFunc("POST "+logoutPath, submitLogout())
 
-	// Every screen from here down needs a login.
-	guard := middleware.RequireIdentity(loginPath)
+	// Every screen from here down needs a login, and a password that is not
+	// expired. The guard lets the change screen itself through, and logout
+	// stays above the guard, so a user with an expired password reaches those
+	// two and nothing else.
+	guard := middleware.Chain(
+		middleware.RequireIdentity(loginPath),
+		middleware.RequirePasswordChange(changePasswordPath),
+	)
 	mux.Handle("GET /{$}", guard(templ.Handler(views.Board())))
+	mux.Handle("GET "+changePasswordPath, guard(showChangePassword()))
+	mux.Handle("POST "+changePasswordPath, guard(submitChangePassword(deps.SessionMgr, deps.AuthSvc)))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;
