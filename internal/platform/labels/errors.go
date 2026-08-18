@@ -57,6 +57,9 @@ func Message(e validate.FieldError) string {
 	case validate.Mismatch:
 		return "Значения не совпадают"
 
+	case validate.Taken:
+		return "Значение уже занято"
+
 	default:
 		// A code added to validate and not added here.
 		// Distinct from every deliberate message above, so a test can tell a

@@ -71,6 +71,10 @@ func TestMessage(t *testing.T) {
 			validate.FieldError{Field: "repeat_passwd", Code: validate.Mismatch},
 			"Значения не совпадают",
 		},
+		"taken": {
+			validate.FieldError{Field: "email", Code: validate.Taken},
+			"Значение уже занято",
+		},
 		"unknown code": {
 			validate.FieldError{Field: "article", Code: "not_a_real_code"},
 			unhandled,

@@ -49,6 +49,10 @@ const (
 
 	// Two fields that must carry the same value do not. The repeated password.
 	Mismatch Code = "mismatch"
+
+	// A value that has to be unique and is already held by another row. The
+	// login email.
+	Taken Code = "taken"
 )
 
 // FieldError is one rejection: which field, why, and the bound it was measured
