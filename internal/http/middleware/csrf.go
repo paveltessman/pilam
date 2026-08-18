@@ -5,6 +5,7 @@ import (
 
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/requestid"
 )
 
 // CSRF rejects cross-origin state-changing requests.
@@ -30,5 +31,5 @@ func deny(w http.ResponseWriter, r *http.Request) {
 		"origin", r.Header.Get("Origin"),
 		"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"),
 	)
-	writeProblem(w, http.StatusForbidden, labels.ErrorForbidden, RequestIDFromContext(ctx))
+	writeProblem(w, http.StatusForbidden, labels.ErrorForbidden, requestid.FromContext(ctx))
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/requestid"
 )
 
 // Logger puts a request-scoped logger in the context and writes one line per
@@ -19,7 +20,7 @@ func Logger(base *slog.Logger) Middleware {
 		handle := func(w http.ResponseWriter, r *http.Request) {
 			started := time.Now()
 
-			request_id := RequestIDFromContext(r.Context())
+			request_id := requestid.FromContext(r.Context())
 			logger := base.With("request_id", request_id)
 			ctx := logging.NewContext(r.Context(), logger)
 			r = r.WithContext(ctx)

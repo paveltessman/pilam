@@ -6,6 +6,7 @@ import (
 
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/requestid"
 )
 
 // Recover turns a panicking handler into a 500 instead of a dropped connection.
@@ -24,7 +25,7 @@ func Recover() Middleware {
 				}
 
 				ctx := r.Context()
-				requestId := RequestIDFromContext(ctx)
+				requestId := requestid.FromContext(ctx)
 				logger := logging.FromContext(ctx)
 
 				logger.Error("panic recovered",
