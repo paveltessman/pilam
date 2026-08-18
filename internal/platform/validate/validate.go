@@ -185,3 +185,11 @@ func (v *Validator) Err() error {
 	}
 	return v.errs
 }
+
+// Merge extracts the field errors from err and adds them to the validator.
+func (v *Validator) Merge(err error) {
+	errs, _ := From(err)
+	for _, e := range errs {
+		v.Add(e.Field, e.Code, e.Arg)
+	}
+}
