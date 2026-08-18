@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/requestid"
 )
 
 // serve runs one request through mw and returns what came back, along with
@@ -23,7 +24,7 @@ func TestRequestIDIsGeneratedAndEchoed(t *testing.T) {
 	var seen string
 	rec := serve(RequestID(gen), httptest.NewRequest(http.MethodGet, "/", nil),
 		func(_ http.ResponseWriter, r *http.Request) {
-			seen = RequestIDFromContext(r.Context())
+			seen = requestid.FromContext(r.Context())
 		})
 
 	if seen != want {
@@ -40,7 +41,7 @@ func TestRequestIDIgnoresTheInboundHeader(t *testing.T) {
 
 	var seen string
 	serve(RequestID(ids.NewGenerator()), r, func(_ http.ResponseWriter, r *http.Request) {
-		seen = RequestIDFromContext(r.Context())
+		seen = requestid.FromContext(r.Context())
 	})
 
 	if seen == "chosen-by-the-client" {
@@ -56,10 +57,10 @@ func TestRequestIDsDifferBetweenRequests(t *testing.T) {
 
 	var first, second string
 	serve(mw, httptest.NewRequest(http.MethodGet, "/", nil), func(_ http.ResponseWriter, r *http.Request) {
-		first = RequestIDFromContext(r.Context())
+		first = requestid.FromContext(r.Context())
 	})
 	serve(mw, httptest.NewRequest(http.MethodGet, "/", nil), func(_ http.ResponseWriter, r *http.Request) {
-		second = RequestIDFromContext(r.Context())
+		second = requestid.FromContext(r.Context())
 	})
 
 	if first == second {
@@ -68,7 +69,7 @@ func TestRequestIDsDifferBetweenRequests(t *testing.T) {
 }
 
 func TestRequestIDOutsideRequestIsEmpty(t *testing.T) {
-	if got := RequestIDFromContext(t.Context()); got != "" {
+	if got := requestid.FromContext(t.Context()); got != "" {
 		t.Errorf("id = %q, want empty", got)
 	}
 }

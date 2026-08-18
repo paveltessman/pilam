@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/password"
@@ -16,9 +18,10 @@ import (
 const goodPasswd = "a long enough password"
 
 type fakeUsers struct {
-	rows     map[ids.ID]User
-	failWith error
-	updates  int
+	rows           map[ids.ID]User
+	failWith       error
+	failUpdateWith error
+	updates        int
 }
 
 func newFakeUsers(users ...User) *fakeUsers {
@@ -69,6 +72,9 @@ func (f *fakeUsers) Update(_ context.Context, user User) error {
 	if f.failWith != nil {
 		return f.failWith
 	}
+	if f.failUpdateWith != nil {
+		return f.failUpdateWith
+	}
 	if _, found := f.rows[user.ID]; !found {
 		return ErrNoUser
 	}
@@ -83,10 +89,36 @@ type directAtomic struct{}
 
 func (directAtomic) InTx(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 
+// fakeRecorder holds the trail the test reads back.
+type fakeRecorder struct{ entries []audit.Entry }
+
+func (f *fakeRecorder) Record(_ context.Context, entries ...audit.Entry) error {
+	f.entries = append(f.entries, entries...)
+	return nil
+}
+
+// only returns the single entry the trail holds, and fails the test otherwise.
+func (f *fakeRecorder) only(t *testing.T) audit.Entry {
+	t.Helper()
+	if len(f.entries) != 1 {
+		t.Fatalf("The trail holds %d entries, want 1: %+v", len(f.entries), f.entries)
+	}
+	return f.entries[0]
+}
+
 func newTestService(t *testing.T, users *fakeUsers) *Service {
 	t.Helper()
+	svc, _ := newAuditedService(t, users)
+	return svc
+}
+
+// newAuditedService returns the service, and the trail it records to.
+func newAuditedService(t *testing.T, users *fakeUsers) (*Service, *fakeRecorder) {
+	t.Helper()
 	clk := clock.Fixed(time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC), time.UTC)
-	return NewService(users, directAtomic{}, NewThrottle(clk), ids.NewDeterministic(1))
+	recorder := &fakeRecorder{}
+	trail := audit.NewTrail(recorder, clk, ids.NewDeterministic(100))
+	return NewService(users, directAtomic{}, NewThrottle(clk), ids.NewDeterministic(1), trail), recorder
 }
 
 // seedUser returns a stored user holding goodPasswd.
@@ -486,12 +518,14 @@ func TestSetRoleRefusesUnknownRole(t *testing.T) {
 
 func TestNewServiceRefusesNilDependencies(t *testing.T) {
 	clk := clock.Fixed(time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC), time.UTC)
+	trail := audit.NewTrail(&fakeRecorder{}, clk, ids.NewDeterministic(1))
 
 	cases := map[string]func(){
-		"nil users":    func() { NewService(nil, directAtomic{}, NewThrottle(clk), ids.NewDeterministic(1)) },
-		"nil atomic":   func() { NewService(newFakeUsers(), nil, NewThrottle(clk), ids.NewDeterministic(1)) },
-		"nil throttle": func() { NewService(newFakeUsers(), directAtomic{}, nil, ids.NewDeterministic(1)) },
-		"nil ids":      func() { NewService(newFakeUsers(), directAtomic{}, NewThrottle(clk), nil) },
+		"nil users":    func() { NewService(nil, directAtomic{}, NewThrottle(clk), ids.NewDeterministic(1), trail) },
+		"nil atomic":   func() { NewService(newFakeUsers(), nil, NewThrottle(clk), ids.NewDeterministic(1), trail) },
+		"nil throttle": func() { NewService(newFakeUsers(), directAtomic{}, nil, ids.NewDeterministic(1), trail) },
+		"nil ids":      func() { NewService(newFakeUsers(), directAtomic{}, NewThrottle(clk), nil, trail) },
+		"nil trail":    func() { NewService(newFakeUsers(), directAtomic{}, NewThrottle(clk), ids.NewDeterministic(1), nil) },
 	}
 
 	for name, build := range cases {
@@ -518,5 +552,217 @@ func TestIdentityCarriesCorrectFields(t *testing.T) {
 	}
 	if (Identity{}).LogValue().String() != "anonymous" {
 		t.Error("The zero identity does not log as anonymous")
+	}
+}
+
+func TestCreateRecordsOneEntry(t *testing.T) {
+	svc, trail := newAuditedService(t, newFakeUsers())
+
+	user, err := svc.Create(t.Context(), NewUser{
+		Email: "ada@example.com", FirstName: "Ada", LastName: "Lovelace",
+		Role: MemberRole, Passwd: goodPasswd,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got := trail.only(t)
+	if got.Entity != audit.EntityUser || got.EntityID != user.ID {
+		t.Errorf("The entry names %s %s, want %s %s", got.Entity, got.EntityID, audit.EntityUser, user.ID)
+	}
+	if got.Action != audit.ActionCreated {
+		t.Errorf("Action = %q, want %q", got.Action, audit.ActionCreated)
+	}
+}
+
+func TestCreateWithoutSessionNamesTheNewUserAsActor(t *testing.T) {
+	svc, trail := newAuditedService(t, newFakeUsers())
+
+	user, err := svc.Create(t.Context(), NewUser{
+		Email: "ada@example.com", FirstName: "Ada", LastName: "Lovelace",
+		Role: RootRole, Passwd: goodPasswd,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if got := trail.only(t).ActorID; got != user.ID {
+		t.Errorf("ActorID = %v, want the new user %v", got, user.ID)
+	}
+}
+
+func TestWritesNameTheLoggedInUserAsActor(t *testing.T) {
+	root := seedUser(t, "root@example.com")
+	root.Role = RootRole
+	svc, trail := newAuditedService(t, newFakeUsers(root))
+	ctx := NewContext(t.Context(), root.Identity())
+
+	_, err := svc.Create(ctx, NewUser{
+		Email: "ada@example.com", FirstName: "Ada", LastName: "Lovelace",
+		Role: MemberRole, Passwd: goodPasswd,
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if got := trail.only(t).ActorID; got != root.ID {
+		t.Errorf("ActorID = %v, want the logged-in root %v", got, root.ID)
+	}
+}
+
+func TestCreateThatFailsRecordsNothing(t *testing.T) {
+	svc, trail := newAuditedService(t, newFakeUsers(seedUser(t, "ada@example.com")))
+
+	_, err := svc.Create(t.Context(), NewUser{
+		Email: "ada@example.com", FirstName: "Ada", LastName: "Lovelace",
+		Role: MemberRole, Passwd: goodPasswd,
+	})
+	if !errors.Is(err, ErrEmailTaken) {
+		t.Fatalf("Create = %v, want %v", err, ErrEmailTaken)
+	}
+
+	if len(trail.entries) != 0 {
+		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
+	}
+}
+
+func TestChangePasswordRecordsTheChangeAndNotThePassword(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	const newPasswd = "another long password"
+	if _, err := svc.ChangePassword(t.Context(), user.ID, goodPasswd, newPasswd); err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	got := trail.only(t)
+	if got.Action != audit.ActionPasswdChanged || got.FieldKey != FieldPasswd {
+		t.Errorf("The entry is %s on %q, want %s on %q",
+			got.Action, got.FieldKey, audit.ActionPasswdChanged, FieldPasswd)
+	}
+	if got.New != audit.Marker {
+		t.Errorf("New = %q, want the marker %q", got.New, audit.Marker)
+	}
+	for _, secret := range []string{goodPasswd, newPasswd, user.PasswdHash} {
+		if got.Old == secret || got.New == secret {
+			t.Errorf("The entry carries the secret %q", secret)
+		}
+	}
+}
+
+func TestChangePasswordThatFailsRecordsNothing(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	_, err := svc.ChangePassword(t.Context(), user.ID, "the wrong password", "another long password")
+	if err == nil {
+		t.Fatal("ChangePassword accepted the wrong current password")
+	}
+
+	if len(trail.entries) != 0 {
+		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
+	}
+}
+
+func TestSetRoleRecordsBothValues(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	if err := svc.SetRole(t.Context(), user.ID, RootRole); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+
+	got := trail.only(t)
+	if got.Action != audit.ActionRoleChanged || got.FieldKey != FieldRole {
+		t.Errorf("The entry is %s on %q, want %s on %q",
+			got.Action, got.FieldKey, audit.ActionRoleChanged, FieldRole)
+	}
+	if got.Old != string(MemberRole) || got.New != string(RootRole) {
+		t.Errorf("The entry moves %q to %q, want %q to %q", got.Old, got.New, MemberRole, RootRole)
+	}
+}
+
+func TestSetRoleToTheHeldRoleRecordsNothing(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	if err := svc.SetRole(t.Context(), user.ID, user.Role); err != nil {
+		t.Fatalf("SetRole: %v", err)
+	}
+
+	if len(trail.entries) != 0 {
+		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
+	}
+}
+
+func TestSetActiveRecordsEachDirection(t *testing.T) {
+	cases := map[string]struct {
+		held, want bool
+		action     string
+	}{
+		"deactivate": {held: true, want: false, action: audit.ActionDeactivated},
+		"reactivate": {held: false, want: true, action: audit.ActionReactivated},
+	}
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			user := seedUser(t, "ada@example.com")
+			user.Active = c.held
+			svc, trail := newAuditedService(t, newFakeUsers(user))
+
+			if err := svc.SetActive(t.Context(), user.ID, c.want); err != nil {
+				t.Fatalf("SetActive: %v", err)
+			}
+
+			got := trail.only(t)
+			if got.Action != c.action || got.FieldKey != FieldActive {
+				t.Errorf("The entry is %s on %q, want %s on %q",
+					got.Action, got.FieldKey, c.action, FieldActive)
+			}
+			if got.Old != strconv.FormatBool(c.held) || got.New != strconv.FormatBool(c.want) {
+				t.Errorf("The entry moves %q to %q, want %v to %v", got.Old, got.New, c.held, c.want)
+			}
+		})
+	}
+}
+
+func TestSetActiveToTheHeldStateRecordsNothing(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	if err := svc.SetActive(t.Context(), user.ID, user.Active); err != nil {
+		t.Fatalf("SetActive: %v", err)
+	}
+
+	if len(trail.entries) != 0 {
+		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
+	}
+}
+
+func TestWriteThatFailsRecordsNothing(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	users := newFakeUsers(user)
+	svc, trail := newAuditedService(t, users)
+	users.failUpdateWith = errors.New("the store is down")
+
+	if err := svc.SetRole(t.Context(), user.ID, RootRole); err == nil {
+		t.Fatal("SetRole returned nil, want the store failure")
+	}
+
+	if len(trail.entries) != 0 {
+		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
+	}
+}
+
+func TestAuthenticateRecordsNothing(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	if _, _, err := svc.Authenticate(t.Context(), user.Email, goodPasswd); err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	if len(trail.entries) != 0 {
+		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
 	}
 }

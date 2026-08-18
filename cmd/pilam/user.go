@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
@@ -71,11 +72,17 @@ func userAdd(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 	}
 	defer db.Close()
 
+	clk := clock.New(cfg.Timezone)
+	idGen := ids.NewGenerator()
+
+	// Nobody is logged in here, so the trail names the new user as the actor of
+	// their own creation.
 	service := auth.NewService(
 		postgres.NewUsers(db),
 		db,
-		auth.NewThrottle(clock.New(cfg.Timezone)),
-		ids.NewGenerator(),
+		auth.NewThrottle(clk),
+		idGen,
+		audit.NewTrail(postgres.NewAudit(db), clk, idGen),
 	)
 
 	// The plain password lives in this variable and in the report below.
