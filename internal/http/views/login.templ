@@ -3,7 +3,6 @@ package views
 import (
 	"github.com/paveltessman/pilam/internal/http/views/ui/button"
 	"github.com/paveltessman/pilam/internal/http/views/ui/input"
-	"github.com/paveltessman/pilam/internal/http/views/ui/label"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
@@ -45,7 +44,7 @@ templ Login(form LoginForm) {
 						{ labels.LoginFailed }
 					</p>
 				}
-				@loginField(FieldEmail, labels.LoginEmail, messages[FieldEmail]) {
+				@formField(fieldProps{Name: FieldEmail, Label: labels.LoginEmail, Message: messages[FieldEmail]}) {
 					@input.Input(input.Props{
 						ID:         FieldEmail,
 						Name:       FieldEmail,
@@ -55,7 +54,7 @@ templ Login(form LoginForm) {
 						Attributes: templ.Attributes{"autocomplete": "username", "autofocus": true},
 					})
 				}
-				@loginField(FieldPassword, labels.LoginPassword, messages[FieldPassword]) {
+				@formField(fieldProps{Name: FieldPassword, Label: labels.LoginPassword, Message: messages[FieldPassword]}) {
 					@input.Input(input.Props{
 						ID:       FieldPassword,
 						Name:     FieldPassword,
@@ -73,17 +72,4 @@ templ Login(form LoginForm) {
 			</form>
 		</main>
 	}
-}
-
-// loginField wraps one input in its label and its error message.
-templ loginField(name, text, message string) {
-	<div class="space-y-2">
-		@label.Label(label.Props{For: name, Error: message}) {
-			{ text }
-		}
-		{ children... }
-		if message != "" {
-			<p class="text-sm text-destructive">{ message }</p>
-		}
-	</div>
 }
