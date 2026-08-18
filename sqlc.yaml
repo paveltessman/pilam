@@ -5,8 +5,8 @@ sql:
     queries: db/queries
     gen:
       go:
-        package: postgres
-        out: internal/postgres
+        package: sqlc
+        out: internal/postgres/internal/sqlc
         sql_package: pgx/v5
         output_db_file_name: db_sqlc.go
         output_models_file_name: models_sqlc.go
