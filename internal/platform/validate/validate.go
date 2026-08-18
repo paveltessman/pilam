@@ -25,8 +25,10 @@ const (
 	// The field was left empty.
 	Required Code = "required"
 
-	// Text longer than the field allows. Arg is the limit, in characters.
-	TooLong Code = "too_long"
+	// Text outside the length the field allows. Arg is the limit, in
+	// characters.
+	TooLong  Code = "too_long"
+	TooShort Code = "too_short"
 
 	// A number outside its bounds. Arg is the bound.
 	TooSmall Code = "too_small"
@@ -44,6 +46,9 @@ const (
 
 	// Well-formed but wrong. The login password.
 	Incorrect Code = "incorrect"
+
+	// Two fields that must carry the same value do not. The repeated password.
+	Mismatch Code = "mismatch"
 )
 
 // FieldError is one rejection: which field, why, and the bound it was measured
@@ -151,7 +156,16 @@ func (v *Validator) MaxLen(field, value string, limit int) bool {
 	return !v.Has(field)
 }
 
-// AtLeast rejects n below limit.
+// MinLen rejects text shorter than limit characters (characters, not bytes).
+func (v *Validator) MinLen(field, value string, limit int) bool {
+	if utf8.RuneCountInString(value) < limit {
+		v.Add(field, TooShort, strconv.Itoa(limit))
+	}
+	return !v.Has(field)
+}
+
+// AtLeast rejects n below limit. It is the bound of a number, not of text:
+// MinLen is the one for text.
 func (v *Validator) AtLeast(field string, n, limit int) bool {
 	if n < limit {
 		v.Add(field, TooSmall, strconv.Itoa(limit))

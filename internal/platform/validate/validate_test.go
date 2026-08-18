@@ -77,6 +77,26 @@ func TestMaxLenCountsCharactersNotBytes(t *testing.T) {
 	}
 }
 
+func TestMinLenCountsCharactersNotBytes(t *testing.T) {
+	const name = "Пальто" // 6 characters, 12 bytes
+
+	var v validate.Validator
+	v.MinLen("name", name, 6)
+
+	if v.Has("name") {
+		t.Errorf("MinLen(%q, 6) rejected a name of exactly 6 characters", name)
+	}
+
+	var under validate.Validator
+	under.MinLen("name", name, 7)
+
+	got := errFor(t, &under, "name")
+	want := (validate.FieldError{Field: "name", Code: validate.TooShort, Arg: "7"})
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
 func TestBounds(t *testing.T) {
 	testData := map[string]struct {
 		check func(*validate.Validator)
