@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 	"github.com/paveltessman/pilam/internal/platform/password"
@@ -31,6 +33,7 @@ const (
 	FieldFirstName   = "first_name"
 	FieldLastName    = "last_name"
 	FieldRole        = "role"
+	FieldActive      = "active"
 	FieldPasswd      = "passwd"
 	FieldCurrentPass = "current_passwd"
 	FieldNewPass     = "new_passwd"
@@ -125,9 +128,10 @@ type Service struct {
 	atomic   Atomic
 	throttle Throttle
 	ids      ids.Generator
+	trail    *audit.Trail
 }
 
-func NewService(users Users, atomic Atomic, throttle Throttle, gen ids.Generator) *Service {
+func NewService(users Users, atomic Atomic, throttle Throttle, gen ids.Generator, trail *audit.Trail) *Service {
 	switch {
 	case users == nil:
 		panic("auth: nil users store")
@@ -137,8 +141,10 @@ func NewService(users Users, atomic Atomic, throttle Throttle, gen ids.Generator
 		panic("auth: nil throttle")
 	case gen == nil:
 		panic("auth: nil id generator")
+	case trail == nil:
+		panic("auth: nil audit trail")
 	}
-	return &Service{users: users, atomic: atomic, throttle: throttle, ids: gen}
+	return &Service{users: users, atomic: atomic, throttle: throttle, ids: gen, trail: trail}
 }
 
 // Resolve returns the identity a session subject names.
@@ -209,7 +215,15 @@ func (s *Service) Create(ctx context.Context, in NewUser) (User, error) {
 	}
 
 	err = s.atomic.InTx(ctx, func(ctx context.Context) error {
-		return s.users.Create(ctx, user)
+		if err := s.users.Create(ctx, user); err != nil {
+			return err
+		}
+		err = s.trail.Record(ctx, s.actor(ctx, user.ID), audit.Change{
+			Entity:   audit.EntityUser,
+			EntityID: user.ID,
+			Action:   audit.ActionCreated,
+		})
+		return err
 	})
 	if err != nil {
 		return User{}, err
@@ -289,7 +303,14 @@ func (s *Service) ChangePassword(ctx context.Context, userID ids.ID, current, ne
 	user.PasswdExpired = false
 	user.SessionEpoch++
 
-	if err := s.update(ctx, user); err != nil {
+	change := audit.Change{
+		Entity:   audit.EntityUser,
+		EntityID: user.ID,
+		Action:   audit.ActionPasswdChanged,
+		FieldKey: FieldPasswd,
+		New:      audit.Marker,
+	}
+	if err := s.write(ctx, user, change); err != nil {
 		return Principal{}, err
 	}
 
@@ -309,10 +330,21 @@ func (s *Service) SetActive(ctx context.Context, userID ids.ID, active bool) err
 	}
 
 	user.Active = active
+	action := audit.ActionReactivated
 	if !active {
+		action = audit.ActionDeactivated
 		user.SessionEpoch++
 	}
-	return s.update(ctx, user)
+
+	err = s.write(ctx, user, audit.Change{
+		Entity:   audit.EntityUser,
+		EntityID: user.ID,
+		Action:   action,
+		FieldKey: FieldActive,
+		Old:      strconv.FormatBool(!active),
+		New:      strconv.FormatBool(active),
+	})
+	return err
 }
 
 // SetRole moves a user between the two roles.
@@ -329,15 +361,43 @@ func (s *Service) SetRole(ctx context.Context, userID ids.ID, role Role) error {
 		return nil
 	}
 
+	previous := user.Role
 	user.Role = role
-	return s.update(ctx, user)
+
+	err = s.write(ctx, user, audit.Change{
+		Entity:   audit.EntityUser,
+		EntityID: user.ID,
+		Action:   audit.ActionRoleChanged,
+		FieldKey: FieldRole,
+		Old:      string(previous),
+		New:      string(role),
+	})
+	return err
 }
 
-// update writes one row in a transaction
-func (s *Service) update(ctx context.Context, user User) error {
-	return s.atomic.InTx(ctx, func(ctx context.Context) error {
-		return s.users.Update(ctx, user)
+// write stores one row and records what changed, in one transaction. A failure
+// on either side rolls both back, so the row and the trail agree.
+func (s *Service) write(ctx context.Context, user User, changes ...audit.Change) error {
+	err := s.atomic.InTx(ctx, func(ctx context.Context) error {
+		if err := s.users.Update(ctx, user); err != nil {
+			return err
+		}
+		return s.trail.Record(ctx, s.actor(ctx, user.ID), changes...)
 	})
+	return err
+}
+
+// actor is the user the trail holds responsible: whoever the request is
+// authenticated as, and otherwise the user the write touches.
+//
+// The fallback covers the work that runs under no session. e.g. `pilam user add`
+// creates the first user with nobody logged in, and that user is the only actor
+// the entry can name.
+func (s *Service) actor(ctx context.Context, fallback ids.ID) ids.ID {
+	if identity, ok := FromContext(ctx); ok {
+		return identity.UserID
+	}
+	return fallback
 }
 
 // rehash writes the password back under the current parameters.
@@ -351,7 +411,7 @@ func (s *Service) rehash(ctx context.Context, user User, submittedPasswd string)
 	}
 
 	user.PasswdHash = hash
-	if err := s.update(ctx, user); err != nil {
+	if err := s.write(ctx, user); err != nil {
 		logger.Warn("can't store the rehashed password", "user", user.ID, "err", err)
 	}
 }

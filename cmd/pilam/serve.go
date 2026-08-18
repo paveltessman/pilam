@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	pilamhttp "github.com/paveltessman/pilam/internal/http"
 	"github.com/paveltessman/pilam/internal/platform/clock"
@@ -44,7 +45,8 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 	clk := clock.New(cfg.Timezone)
 	sessionMgr := session.New(cfg.Session.Secret, cfg.Session.TTL, clk)
 	idGen := ids.NewGenerator()
-	authSvc := auth.NewService(postgres.NewUsers(db), db, auth.NewThrottle(clk), idGen)
+	trail := audit.NewTrail(postgres.NewAudit(db), clk, idGen)
+	authSvc := auth.NewService(postgres.NewUsers(db), db, auth.NewThrottle(clk), idGen, trail)
 
 	srv := &http.Server{
 		Addr: cfg.HTTP.Addr,

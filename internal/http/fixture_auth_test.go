@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -128,8 +129,15 @@ type directAtomic struct{}
 
 func (directAtomic) InTx(ctx context.Context, fn func(context.Context) error) error { return fn(ctx) }
 
+// dropRecorder holds nothing. The transport tests read the rows, not the trail.
+type dropRecorder struct{}
+
+func (dropRecorder) Record(context.Context, ...audit.Entry) error { return nil }
+
 func authService(t *testing.T) *auth.Service {
 	t.Helper()
 	clk := clock.Fixed(time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC), time.UTC)
-	return auth.NewService(newFakeUsers(), directAtomic{}, auth.NewThrottle(clk), ids.NewGenerator())
+	gen := ids.NewGenerator()
+	trail := audit.NewTrail(dropRecorder{}, clk, gen)
+	return auth.NewService(newFakeUsers(), directAtomic{}, auth.NewThrottle(clk), gen, trail)
 }
