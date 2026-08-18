@@ -5,6 +5,17 @@ import "net/http"
 
 type Middleware func(http.Handler) http.Handler
 
+// SendTo sends the browser to path, whatever the request arrived as.
+func SendTo(w http.ResponseWriter, r *http.Request, path string) {
+	if IsHTMX(r.Context()) {
+		w.Header().Set("HX-Redirect", path)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	http.Redirect(w, r, path, http.StatusSeeOther)
+}
+
 // Chain composes middlewares into one, outermost first: the handler produced by
 // Chain(a, b, c) enters a, then b, then c, then the wrapped handler, and
 // unwinds in reverse.
