@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/views"
 	"github.com/paveltessman/pilam/internal/platform/labels"
@@ -15,11 +14,11 @@ import (
 )
 
 // login posts a credential and returns what the router answered.
-func login(t *testing.T, deps Deps, username, password string) *httptest.ResponseRecorder {
+func login(t *testing.T, deps Deps, email, password string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	form := url.Values{
-		views.FieldUsername: {username},
+		views.FieldUsername: {email},
 		views.FieldPassword: {password},
 	}
 	r := httptest.NewRequest(http.MethodPost, loginPath, strings.NewReader(form.Encode()))
@@ -75,7 +74,7 @@ func TestLoginPageRendersTheForm(t *testing.T) {
 
 func TestLoginStartsSessionAndLandsOnBoard(t *testing.T) {
 	d := deps(t)
-	rec := login(t, d, auth.Username, auth.Password)
+	rec := login(t, d, testEmail, testPasswd)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
@@ -100,7 +99,7 @@ func TestLoginStartsSessionAndLandsOnBoard(t *testing.T) {
 
 func TestSessionSurvivesRefresh(t *testing.T) {
 	d := deps(t)
-	cookie := sessionCookie(t, login(t, d, auth.Username, auth.Password))
+	cookie := sessionCookie(t, login(t, d, testEmail, testPasswd))
 	if cookie == nil {
 		t.Fatal("no session cookie was set")
 	}
@@ -113,7 +112,7 @@ func TestSessionSurvivesRefresh(t *testing.T) {
 }
 
 func TestWrongPasswordRendersFormAgain(t *testing.T) {
-	rec := login(t, deps(t), auth.Username, "not-the-password")
+	rec := login(t, deps(t), testEmail, "not-the-password")
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
@@ -131,18 +130,18 @@ func TestWrongPasswordRendersFormAgain(t *testing.T) {
 	}
 }
 
-// An unknown username must read exactly like a wrong password.
-func TestWrongUsernameAnswersTheSameWay(t *testing.T) {
+// An unknown email must read exactly like a wrong password.
+func TestWrongEmailAnswersTheSameWay(t *testing.T) {
 	d := deps(t)
-	wrongName := login(t, d, "someone-else", auth.Password)
-	wrongPassword := login(t, d, auth.Username, "not-the-password")
+	wrongName := login(t, d, "someone-else@example.com", testPasswd)
+	wrongPassword := login(t, d, testEmail, "not-the-password")
 
 	if wrongName.Code != wrongPassword.Code {
 		t.Errorf("status = %d for a wrong username, %d for a wrong password",
 			wrongName.Code, wrongPassword.Code)
 	}
 	if !strings.Contains(wrongName.Body.String(), labels.LoginFailed) {
-		t.Error("a wrong username does not give the shared message")
+		t.Error("a wrong email does not give the shared message")
 	}
 }
 
@@ -172,7 +171,7 @@ func TestAnonymousRequestIsSentToTheLogin(t *testing.T) {
 
 func TestLoginPageSendsALoggedInUserToTheBoard(t *testing.T) {
 	d := deps(t)
-	cookie := sessionCookie(t, login(t, d, auth.Username, auth.Password))
+	cookie := sessionCookie(t, login(t, d, testEmail, testPasswd))
 
 	rec := getAs(t, d, loginPath, cookie)
 	if rec.Code != http.StatusSeeOther {
@@ -185,7 +184,7 @@ func TestLoginPageSendsALoggedInUserToTheBoard(t *testing.T) {
 
 func TestLogoutClearsTheSession(t *testing.T) {
 	d := deps(t)
-	cookie := sessionCookie(t, login(t, d, auth.Username, auth.Password))
+	cookie := sessionCookie(t, login(t, d, testEmail, testPasswd))
 
 	r := httptest.NewRequest(http.MethodPost, logoutPath, nil)
 	r.AddCookie(cookie)
@@ -207,7 +206,7 @@ func TestLogoutClearsTheSession(t *testing.T) {
 
 func TestBoardOffersTheWayOut(t *testing.T) {
 	d := deps(t)
-	cookie := sessionCookie(t, login(t, d, auth.Username, auth.Password))
+	cookie := sessionCookie(t, login(t, d, testEmail, testPasswd))
 
 	rec := getAs(t, d, successPath, cookie)
 	for _, want := range []string{labels.NavLogOut, `action="/logout"`} {
