@@ -1,5 +1,4 @@
 // Package password turns a string into hash, and checks a submitted one against it.
-
 package password
 
 import (
@@ -11,8 +10,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
+
+	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
 var ErrInvalidHash = errors.New("invalid password hash")
@@ -66,16 +68,17 @@ func Hash(plain string) (string, error) {
 //
 // A wrong password is ok false and a nil error. An unreadable hash is an error.
 func Verify(encoded, plain string) (ok bool, needsRehash bool, err error) {
-	stored, salt, key, err := decode(encoded)
+	params, salt, key, err := decode(encoded)
 	if err != nil {
 		return false, false, err
 	}
 
-	got := derive(stored, plain, salt, uint32(len(key)))
+	got := derive(params, plain, salt, uint32(len(key)))
 	if subtle.ConstantTimeCompare(got, key) != 1 {
 		return false, false, nil
 	}
-	return true, stored != current || len(salt) != saltLen || len(key) != keyLen, nil
+	needsRehash = params != current || len(salt) != saltLen || len(key) != keyLen
+	return true, needsRehash, nil
 }
 
 // Dummy returns one fixed valid hash, of a password nobody holds.
@@ -93,6 +96,22 @@ var Dummy = sync.OnceValue(func() string {
 	derived := derive(current, plain, []byte(salt), keyLen)
 	return encode(current, []byte(salt), derived)
 })
+
+// The length policy, per PRD §9.4. Length in characters, not bytes. There are
+// no composition rules.
+const (
+	MinLen = 12
+	MaxLen = 128
+)
+
+// Check reports whether plain meets the length policy, as validate.FieldErrors
+// against field. A password inside the range returns nil.
+func Check(field, plain string) error {
+	var v validate.Validator
+	v.AtLeast(field, utf8.RuneCountInString(plain), MinLen)
+	v.MaxLen(field, plain, MaxLen)
+	return v.Err()
+}
 
 func derive(p params, plain string, salt []byte, length uint32) []byte {
 	return argon2.IDKey([]byte(plain), salt, p.time, p.memory, p.threads, length)
