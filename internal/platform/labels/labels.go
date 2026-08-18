@@ -22,9 +22,9 @@ const (
 
 const (
 	LoginTitle    = "Вход"
-	LoginName     = "Логин"
+	LoginEmail    = "Электронная почта"
 	LoginPassword = "Пароль"
-	LoginFailed   = "Неверный логин или пароль"
+	LoginFailed   = "Неверная почта или пароль"
 )
 
 // The failures in the http middleware chain

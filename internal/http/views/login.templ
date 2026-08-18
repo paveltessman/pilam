@@ -9,15 +9,15 @@ import (
 )
 
 const (
-	FieldUsername = "username"
+	FieldEmail    = "email"
 	FieldPassword = "password"
 )
 
 // LoginForm is what the login screen renders: what the user typed, and what
 // was wrong with it.
 type LoginForm struct {
-	Username string
-	Errors   validate.FieldErrors
+	Email  string
+	Errors validate.FieldErrors
 }
 
 // Rejected reports whether the credential as a whole was refused, as opposed
@@ -45,12 +45,13 @@ templ Login(form LoginForm) {
 						{ labels.LoginFailed }
 					</p>
 				}
-				@loginField(FieldUsername, labels.LoginName, messages[FieldUsername]) {
+				@loginField(FieldEmail, labels.LoginEmail, messages[FieldEmail]) {
 					@input.Input(input.Props{
-						ID:         FieldUsername,
-						Name:       FieldUsername,
-						Value:      form.Username,
-						HasError:   messages[FieldUsername] != "",
+						ID:         FieldEmail,
+						Name:       FieldEmail,
+						Type:       input.TypeEmail,
+						Value:      form.Email,
+						HasError:   messages[FieldEmail] != "",
 						Attributes: templ.Attributes{"autocomplete": "username", "autofocus": true},
 					})
 				}

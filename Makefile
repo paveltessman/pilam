@@ -75,7 +75,7 @@ $(TEMPLUI):
 .PHONY: generate
 generate: ## Run all code generators (templ, sqlc)
 	go tool templ generate
-	@if [ -f sqlc.yaml ]; then go tool sqlc generate; fi
+	go tool sqlc generate
 
 .PHONY: css
 css: $(TAILWIND) ## Compile Tailwind into the embedded stylesheet
@@ -156,6 +156,15 @@ migration: ## Scaffold a migration: make migration name=add_styles
 seed: ## Load the demo dataset
 	go run ./cmd/pilam seed
 
+USER_USAGE := usage: make user email=a@b.c name="Ada Lovelace" [root=1]
+
+.PHONY: user
+user: ## Create a user: make user email=a@b.c name="Ada Lovelace" [root=1]
+	@test -n "$(email)" || { echo '$(USER_USAGE)' >&2; exit 1; }
+	@test -n "$(name)"  || { echo '$(USER_USAGE)' >&2; exit 1; }
+	@# The command prints the generated password once.
+	go run ./cmd/pilam user add --email '$(email)' --name '$(name)' $(if $(root),--root)
+
 ## ---------------------------------------------------------------- containers
 
 .env:
@@ -179,6 +188,7 @@ logs: ## Follow the app logs
 clean: ## Remove build output and generated files (keeps ./bin)
 	rm -rf tmp $(CSS_OUT) $(BIN)/pilam
 	find . -name '*_templ.go' -delete
+	find . -name '*_sqlc.go' -delete
 
 .PHONY: distclean
 distclean: clean ## Also remove the fetched tools — they are a large download

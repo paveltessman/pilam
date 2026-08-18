@@ -1,11 +1,4 @@
 // Package auth owns who the user is.
-//
-// v1 is a single shared login with a single role that sees and edits
-// everything.
-//
-// The shape is chosen so real accounts can arrive without a rewrite. Callers
-// receive an Identity, never a username string, and Identity already carries a
-// Role.
 package auth
 
 import (
@@ -13,41 +6,362 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
+
+	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/logging"
+	"github.com/paveltessman/pilam/internal/platform/password"
+	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
-// Role is what an identity is allowed to do. v1 issues exactly one.
+// Role is what an identity is allowed to do.
 type Role string
 
-const RoleManager Role = "manager"
+const (
+	MemberRole Role = "member"
+	RootRole   Role = "root"
+)
 
-// The value carried in the session cookie
-const Subject = "manager"
+func (r Role) Valid() bool { return r == MemberRole || r == RootRole }
 
-var ErrUnknownSubject = errors.New("auth: unknown subject")
+// The fields a rejection from this package names. The view layer maps them onto
+// its own inputs.
+const (
+	FieldEmail       = "email"
+	FieldFirstName   = "first_name"
+	FieldLastName    = "last_name"
+	FieldRole        = "role"
+	FieldPasswd      = "passwd"
+	FieldCurrentPass = "current_passwd"
+	FieldNewPass     = "new_passwd"
+)
+
+var (
+	ErrNotResolved = errors.New("auth: user not resolved")
+	ErrStaleEpoch  = errors.New("auth: stale session epoch")
+	ErrInactive    = errors.New("auth: user is deactivated")
+	ErrNoUser      = errors.New("auth: no such user")
+	ErrEmailTaken  = errors.New("auth: email already taken")
+)
 
 // Identity is the authenticated user, as every layer below transport sees them.
 type Identity struct {
-	Subject string
-	Role    Role
+	UserID        ids.ID
+	Email         string
+	FirstName     string
+	LastName      string
+	Role          Role
+	PasswdExpired bool
 }
 
 // IsZero reports whether the request is anonymous (not logged in).
-func (i Identity) IsZero() bool { return i.Subject == "" }
+func (i Identity) IsZero() bool { return i.UserID == ids.Nil }
 
 func (i Identity) LogValue() slog.Value {
 	if i.IsZero() {
 		return slog.StringValue("anonymous")
 	}
-	return slog.StringValue(i.Subject)
+	return slog.StringValue(i.Email)
+}
+
+type User struct {
+	ID            ids.ID
+	Email         string
+	FirstName     string
+	LastName      string
+	PasswdHash    string
+	Role          Role
+	Active        bool
+	SessionEpoch  int
+	PasswdExpired bool
+}
+
+func (u User) Identity() Identity {
+	identity := Identity{
+		UserID:        u.ID,
+		Email:         u.Email,
+		FirstName:     u.FirstName,
+		LastName:      u.LastName,
+		Role:          u.Role,
+		PasswdExpired: u.PasswdExpired,
+	}
+	return identity
+}
+
+func (u User) Principal() Principal {
+	return Principal{UserID: u.ID, Epoch: u.SessionEpoch}
+}
+
+// Users is the store of user rows. ByID and ByEmail return ErrNoUser when
+// nothing matches, and Create returns ErrEmailTaken on a duplicate address.
+type Users interface {
+	ByID(ctx context.Context, id ids.ID) (User, error)
+	ByEmail(ctx context.Context, email string) (User, error)
+	Create(ctx context.Context, user User) error
+	Update(ctx context.Context, user User) error
+}
+
+// Atomic runs a unit of work in one transaction. The transaction travels in the
+// context, so a port call inside fn joins it without carrying a handle.
+type Atomic interface {
+	InTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
+// Throttle holds back an account that keeps failing to log in.
+// The key is the normalized submitted login.
+type Throttle interface {
+	// Allow reports whether key may try a password now.
+	Allow(key string) bool
+
+	// Fail records one wrong attempt.
+	Fail(key string)
+
+	// Reset clears the record after a login that held.
+	Reset(key string)
+}
+
+type Service struct {
+	users    Users
+	atomic   Atomic
+	throttle Throttle
+	ids      ids.Generator
+}
+
+func NewService(users Users, atomic Atomic, throttle Throttle, gen ids.Generator) *Service {
+	switch {
+	case users == nil:
+		panic("auth: nil users store")
+	case atomic == nil:
+		panic("auth: nil transaction runner")
+	case throttle == nil:
+		panic("auth: nil throttle")
+	case gen == nil:
+		panic("auth: nil id generator")
+	}
+	return &Service{users: users, atomic: atomic, throttle: throttle, ids: gen}
 }
 
 // Resolve returns the identity a session subject names.
-func Resolve(_ context.Context, subject string) (Identity, error) {
-	if subject != Subject {
-		return Identity{}, fmt.Errorf("%w: %q", ErrUnknownSubject, subject)
+func (s *Service) Resolve(ctx context.Context, subject string) (Identity, error) {
+	principal, err := ParsePrincipal(subject)
+	if err != nil {
+		return Identity{}, fmt.Errorf("%w: %w", ErrNotResolved, err)
 	}
-	return Identity{Subject: Subject, Role: RoleManager}, nil
+
+	user, err := s.users.ByID(ctx, principal.UserID)
+	if err != nil {
+		return Identity{}, fmt.Errorf("%w: loading user %s: %w", ErrNotResolved, principal.UserID, err)
+	}
+
+	if !user.Active {
+		return Identity{}, fmt.Errorf("%w: %w: %s", ErrNotResolved, ErrInactive, user.ID)
+	}
+
+	if user.SessionEpoch != principal.Epoch {
+		return Identity{}, fmt.Errorf("%w: %w: subject carries %d, the row holds %d",
+			ErrNotResolved, ErrStaleEpoch, principal.Epoch, user.SessionEpoch)
+	}
+
+	return user.Identity(), nil
 }
+
+// Authenticate checks a submitted credential and returns the identity it names,
+// with the principal for cookie.
+func (s *Service) Authenticate(ctx context.Context, submittedEmail, submittedPasswd string) (Identity, Principal, error) {
+	email := NormalizeEmail(submittedEmail)
+
+	if !s.throttle.Allow(email) {
+		return Identity{}, Principal{}, rejected()
+	}
+
+	user, err := s.users.ByEmail(ctx, email)
+	switch {
+	case errors.Is(err, ErrNoUser):
+		// An unknown email verifies against a fixed hash, so it costs the same time.
+		user = User{PasswdHash: password.Dummy()}
+	case err != nil:
+		return Identity{}, Principal{}, fmt.Errorf("%w: loading user by email: %w", ErrNotResolved, err)
+	}
+
+	ok, needsRehash, err := password.Verify(user.PasswdHash, submittedPasswd)
+	if err != nil {
+		return Identity{}, Principal{}, fmt.Errorf("%w: verifying the password: %w", ErrNotResolved, err)
+	}
+
+	if !ok || !user.Active {
+		s.throttle.Fail(email)
+		return Identity{}, Principal{}, rejected()
+	}
+	s.throttle.Reset(email)
+
+	if needsRehash {
+		s.rehash(ctx, user, submittedPasswd)
+	}
+
+	return user.Identity(), user.Principal(), nil
+}
+
+// Create writes a new user. It returns the row it wrote.
+func (s *Service) Create(ctx context.Context, in NewUser) (User, error) {
+	user, err := in.user(s.ids.New())
+	if err != nil {
+		return User{}, err
+	}
+
+	err = s.atomic.InTx(ctx, func(ctx context.Context) error {
+		return s.users.Create(ctx, user)
+	})
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+// NewUser is the arguments for Create. Passwd is the first password, in plain text.
+type NewUser struct {
+	Email     string
+	FirstName string
+	LastName  string
+	Role      Role
+	Passwd    string
+}
+
+// user checks the submitted values and turns them into the User struct.
+func (in NewUser) user(id ids.ID) (User, error) {
+	var v validate.Validator
+	v.Required(FieldEmail, in.Email)
+	v.Required(FieldFirstName, in.FirstName)
+	v.Required(FieldLastName, in.LastName)
+	v.Check(in.Role.Valid(), FieldRole, validate.NotAllowed)
+	if err := password.Check(FieldPasswd, in.Passwd); err != nil {
+		v.Merge(err)
+	}
+	if err := v.Err(); err != nil {
+		return User{}, err
+	}
+
+	hash, err := password.Hash(in.Passwd)
+	if err != nil {
+		return User{}, fmt.Errorf("auth: hashing the first password: %w", err)
+	}
+
+	user := User{
+		ID:            id,
+		Email:         NormalizeEmail(in.Email),
+		FirstName:     strings.TrimSpace(in.FirstName),
+		LastName:      strings.TrimSpace(in.LastName),
+		PasswdHash:    hash,
+		Role:          in.Role,
+		Active:        true,
+		SessionEpoch:  1,
+		PasswdExpired: true,
+	}
+
+	return user, nil
+}
+
+// ChangePassword replaces the password of userID, and ends every session
+// by incrementing SessionEpoch.
+func (s *Service) ChangePassword(ctx context.Context, userID ids.ID, current, next string) (Principal, error) {
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return Principal{}, fmt.Errorf("auth: loading user %s: %w", userID, err)
+	}
+
+	ok, _, err := password.Verify(user.PasswdHash, current)
+	if err != nil {
+		return Principal{}, fmt.Errorf("auth: verifying the current password: %w", err)
+	}
+	if !ok {
+		return Principal{}, validate.Fail(FieldCurrentPass, validate.Incorrect)
+	}
+
+	if err := password.Check(FieldNewPass, next); err != nil {
+		return Principal{}, err
+	}
+
+	hash, err := password.Hash(next)
+	if err != nil {
+		return Principal{}, fmt.Errorf("auth: hashing the new password: %w", err)
+	}
+
+	user.PasswdHash = hash
+	user.PasswdExpired = false
+	user.SessionEpoch++
+
+	if err := s.update(ctx, user); err != nil {
+		return Principal{}, err
+	}
+
+	s.throttle.Reset(user.Email)
+	return user.Principal(), nil
+}
+
+// SetActive turns a user on or off. Deactivating bumps the epoch, which ends
+// every session of that user on the next request.
+func (s *Service) SetActive(ctx context.Context, userID ids.ID, active bool) error {
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("auth: loading user %s: %w", userID, err)
+	}
+	if user.Active == active {
+		return nil
+	}
+
+	user.Active = active
+	if !active {
+		user.SessionEpoch++
+	}
+	return s.update(ctx, user)
+}
+
+// SetRole moves a user between the two roles.
+func (s *Service) SetRole(ctx context.Context, userID ids.ID, role Role) error {
+	if !role.Valid() {
+		return validate.Fail(FieldRole, validate.NotAllowed)
+	}
+
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("auth: loading user %s: %w", userID, err)
+	}
+	if user.Role == role {
+		return nil
+	}
+
+	user.Role = role
+	return s.update(ctx, user)
+}
+
+// update writes one row in a transaction
+func (s *Service) update(ctx context.Context, user User) error {
+	return s.atomic.InTx(ctx, func(ctx context.Context) error {
+		return s.users.Update(ctx, user)
+	})
+}
+
+// rehash writes the password back under the current parameters.
+func (s *Service) rehash(ctx context.Context, user User, submittedPasswd string) {
+	logger := logging.FromContext(ctx)
+
+	hash, err := password.Hash(submittedPasswd)
+	if err != nil {
+		logger.Warn("can't rehash the password", "user", user.ID, "err", err)
+		return
+	}
+
+	user.PasswdHash = hash
+	if err := s.update(ctx, user); err != nil {
+		logger.Warn("can't store the rehashed password", "user", user.ID, "err", err)
+	}
+}
+
+// NormalizeEmail is the one form an address is stored and looked up under.
+func NormalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func rejected() error { return validate.Fail("", validate.Incorrect) }
 
 type contextKey struct{}
 

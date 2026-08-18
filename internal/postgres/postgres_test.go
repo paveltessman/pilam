@@ -3,53 +3,25 @@ package postgres
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/paveltessman/pilam/internal/platform/config"
 )
 
-// The transaction runner cannot be checked without a server: commit and rollback
-// are the server's behaviour, not ours.
-// Tests that need one read TEST_DATABASE_URL and skip when it is unset,
-// so `go test ./...` stays green on a machine with no stack running.
-const urlEnv = "TEST_DATABASE_URL"
-
-// openTestDB connects, and gives the test a scratch table to write to.
-func openTestDB(t *testing.T) *DB {
+// scratchDB is openTestDB plus the table the transaction tests write to.
+func scratchDB(t *testing.T) *DB {
 	t.Helper()
 
-	url := os.Getenv(urlEnv)
-	if url == "" {
-		t.Fatalf("This test needs a database. Make sure db is running and %s is set", urlEnv)
-	}
-
-	ctx := t.Context()
-	db, err := Open(ctx, config.Database{URL: url})
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(db.Close)
-
-	exec(t, ctx, db, `DROP TABLE IF EXISTS intx_test`)
-	exec(t, ctx, db, `CREATE TABLE intx_test (note text not null)`)
-
-	// The test's own context is cancelled before its cleanups run, so the one
-	// statement that has to outlive the test gets a context of its own.
-	t.Cleanup(func() { exec(t, context.WithoutCancel(ctx), db, `DROP TABLE IF EXISTS intx_test`) })
-
+	db := openTestDB(t)
+	exec(t, t.Context(), db, `CREATE TABLE intx_test (note text not null)`)
 	return db
 }
 
-// exec runs one statement.
+// exec runs one statement outside a transaction.
 func exec(t *testing.T, ctx context.Context, db *DB, sql string) {
 	t.Helper()
-	err := db.InTx(ctx, func(tx dbtx) error {
-		_, err := tx.Exec(ctx, sql)
-		return err
-	})
-	if err != nil {
+	if _, err := db.conn(ctx).Exec(ctx, sql); err != nil {
 		t.Fatalf("exec %q: %v", sql, err)
 	}
 }
@@ -58,23 +30,22 @@ func exec(t *testing.T, ctx context.Context, db *DB, sql string) {
 func notes(t *testing.T, db *DB) []string {
 	t.Helper()
 
-	var found []string
-	err := db.InTx(t.Context(), func(tx dbtx) error {
-		rows, err := tx.Query(t.Context(), `SELECT note FROM intx_test ORDER BY note`)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var note string
-			if err := rows.Scan(&note); err != nil {
-				return err
-			}
-			found = append(found, note)
-		}
-		return rows.Err()
-	})
+	ctx := t.Context()
+	rows, err := db.conn(ctx).Query(ctx, `SELECT note FROM intx_test ORDER BY note`)
 	if err != nil {
+		t.Fatalf("reading notes: %v", err)
+	}
+	defer rows.Close()
+
+	var found []string
+	for rows.Next() {
+		var note string
+		if err := rows.Scan(&note); err != nil {
+			t.Fatalf("reading notes: %v", err)
+		}
+		found = append(found, note)
+	}
+	if err := rows.Err(); err != nil {
 		t.Fatalf("reading notes: %v", err)
 	}
 	return found
@@ -102,10 +73,10 @@ func TestPing(t *testing.T) {
 }
 
 func TestInTxCommitsWhenTheFunctionReturnsNil(t *testing.T) {
-	db := openTestDB(t)
+	db := scratchDB(t)
 
-	err := db.InTx(t.Context(), func(tx dbtx) error {
-		_, err := tx.Exec(t.Context(), `INSERT INTO intx_test (note) VALUES ('kept')`)
+	err := db.InTx(t.Context(), func(ctx context.Context) error {
+		_, err := db.conn(ctx).Exec(ctx, `INSERT INTO intx_test (note) VALUES ('kept')`)
 		return err
 	})
 	if err != nil {
@@ -120,11 +91,11 @@ func TestInTxCommitsWhenTheFunctionReturnsNil(t *testing.T) {
 // The audit trail depends on this: a write and the entry describing it either
 // both land or neither does.
 func TestInTxRollsBackWhenTheFunctionFails(t *testing.T) {
-	db := openTestDB(t)
+	db := scratchDB(t)
 
 	sentinel := errors.New("the second write failed")
-	err := db.InTx(t.Context(), func(tx dbtx) error {
-		if _, err := tx.Exec(t.Context(), `INSERT INTO intx_test (note) VALUES ('discarded')`); err != nil {
+	err := db.InTx(t.Context(), func(ctx context.Context) error {
+		if _, err := db.conn(ctx).Exec(ctx, `INSERT INTO intx_test (note) VALUES ('discarded')`); err != nil {
 			return err
 		}
 		return sentinel
@@ -139,7 +110,7 @@ func TestInTxRollsBackWhenTheFunctionFails(t *testing.T) {
 }
 
 func TestInTxRollsBackWhenTheFunctionPanics(t *testing.T) {
-	db := openTestDB(t)
+	db := scratchDB(t)
 
 	func() {
 		defer func() {
@@ -147,8 +118,8 @@ func TestInTxRollsBackWhenTheFunctionPanics(t *testing.T) {
 				t.Error("the panic did not propagate out of InTx")
 			}
 		}()
-		_ = db.InTx(t.Context(), func(tx dbtx) error {
-			if _, err := tx.Exec(t.Context(), `INSERT INTO intx_test (note) VALUES ('discarded')`); err != nil {
+		_ = db.InTx(t.Context(), func(ctx context.Context) error {
+			if _, err := db.conn(ctx).Exec(ctx, `INSERT INTO intx_test (note) VALUES ('discarded')`); err != nil {
 				return err
 			}
 			panic("something went wrong mid-use-case")
@@ -164,11 +135,11 @@ func TestInTxRollsBackWhenTheFunctionPanics(t *testing.T) {
 // rollback has to happen anyway. Without it the write would sit on the
 // connection until the server noticed the client had gone.
 func TestInTxRollsBackWhenTheContextIsCancelled(t *testing.T) {
-	db := openTestDB(t)
+	db := scratchDB(t)
 
-	ctx, cancel := context.WithCancel(t.Context())
-	err := db.InTx(ctx, func(tx dbtx) error {
-		if _, err := tx.Exec(ctx, `INSERT INTO intx_test (note) VALUES ('discarded')`); err != nil {
+	outer, cancel := context.WithCancel(t.Context())
+	err := db.InTx(outer, func(ctx context.Context) error {
+		if _, err := db.conn(ctx).Exec(ctx, `INSERT INTO intx_test (note) VALUES ('discarded')`); err != nil {
 			return err
 		}
 		cancel()
@@ -180,5 +151,33 @@ func TestInTxRollsBackWhenTheContextIsCancelled(t *testing.T) {
 
 	if got := notes(t, db); len(got) != 0 {
 		t.Errorf("rows = %v, want none", got)
+	}
+}
+
+// A nested call joins the transaction already in the context. Without that, an
+// audit entry written inside a user write would sit in a second transaction and
+// could land on its own.
+func TestInTxJoinsTheTransactionTheContextCarries(t *testing.T) {
+	db := scratchDB(t)
+
+	sentinel := errors.New("the outer work failed")
+	err := db.InTx(t.Context(), func(ctx context.Context) error {
+		inner := db.InTx(ctx, func(ctx context.Context) error {
+			_, err := db.conn(ctx).Exec(ctx, `INSERT INTO intx_test (note) VALUES ('discarded')`)
+			return err
+		})
+		if inner != nil {
+			return inner
+		}
+		return sentinel
+	})
+	if !errors.Is(err, sentinel) {
+		t.Fatalf("InTx error = %v, want %v", err, sentinel)
+	}
+
+	// The inner call returned nil, but it did not commit: the outer rollback
+	// took its write with it.
+	if got := notes(t, db); len(got) != 0 {
+		t.Errorf("rows = %v, want none: the inner call committed on its own", got)
 	}
 }
