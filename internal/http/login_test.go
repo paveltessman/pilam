@@ -18,7 +18,7 @@ func login(t *testing.T, deps Deps, email, password string) *httptest.ResponseRe
 	t.Helper()
 
 	form := url.Values{
-		views.FieldUsername: {email},
+		views.FieldEmail:    {email},
 		views.FieldPassword: {password},
 	}
 	r := httptest.NewRequest(http.MethodPost, loginPath, strings.NewReader(form.Encode()))
@@ -60,7 +60,7 @@ func TestLoginPageRendersTheForm(t *testing.T) {
 
 	body := rec.Body.String()
 	for _, want := range []string{
-		`name="username"`,
+		`name="email"`,
 		`type="password"`,
 		`method="post"`,
 		labels.LoginTitle,
@@ -137,7 +137,7 @@ func TestWrongEmailAnswersTheSameWay(t *testing.T) {
 	wrongPassword := login(t, d, testEmail, "not-the-password")
 
 	if wrongName.Code != wrongPassword.Code {
-		t.Errorf("status = %d for a wrong username, %d for a wrong password",
+		t.Errorf("status = %d for a wrong email, %d for a wrong password",
 			wrongName.Code, wrongPassword.Code)
 	}
 	if !strings.Contains(wrongName.Body.String(), labels.LoginFailed) {
@@ -201,6 +201,80 @@ func TestLogoutClearsTheSession(t *testing.T) {
 	cleared := sessionCookie(t, rec)
 	if cleared == nil || cleared.MaxAge >= 0 {
 		t.Errorf("cookie = %+v, want it expired", cleared)
+	}
+}
+
+func TestDeactivatedUserLosesTheSession(t *testing.T) {
+	d := deps(t)
+	cookie := sessionCookie(t, login(t, d, testEmail, testPasswd))
+	if cookie == nil {
+		t.Fatal("no session cookie was set")
+	}
+
+	if err := d.AuthSvc.SetActive(t.Context(), testUserID, false); err != nil {
+		t.Fatalf("deactivating the user: %v", err)
+	}
+
+	rec := getAs(t, d, successPath, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+	if got := rec.Header().Get("Location"); got != loginPath {
+		t.Errorf("Location = %q, want %q", got, loginPath)
+	}
+
+	cleared := sessionCookie(t, rec)
+	if cleared == nil || cleared.MaxAge >= 0 {
+		t.Errorf("cookie = %+v, want it expired", cleared)
+	}
+}
+
+func TestDeactivatedUserCannotLogInAgain(t *testing.T) {
+	d := deps(t)
+	if err := d.AuthSvc.SetActive(t.Context(), testUserID, false); err != nil {
+		t.Fatalf("deactivating the user: %v", err)
+	}
+
+	rec := login(t, d, testEmail, testPasswd)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+	if c := sessionCookie(t, rec); c != nil {
+		t.Errorf("a deactivated user got a session: %+v", c)
+	}
+	if !strings.Contains(rec.Body.String(), labels.LoginFailed) {
+		t.Error("a deactivated user does not give the shared message")
+	}
+}
+
+func TestPasswordChangeEndsTheOtherSessions(t *testing.T) {
+	d := deps(t)
+	phone := sessionCookie(t, login(t, d, testEmail, testPasswd))
+	laptop := sessionCookie(t, login(t, d, testEmail, testPasswd))
+	if phone == nil || laptop == nil {
+		t.Fatal("no session cookie was set")
+	}
+
+	const newPasswd = "another long enough password"
+	if _, err := d.AuthSvc.ChangePassword(t.Context(), testUserID, testPasswd, newPasswd); err != nil {
+		t.Fatalf("changing the password: %v", err)
+	}
+
+	for name, cookie := range map[string]*http.Cookie{"phone": phone, "laptop": laptop} {
+		rec := getAs(t, d, successPath, cookie)
+		if rec.Code != http.StatusSeeOther {
+			t.Errorf("%s: status = %d, want %d", name, rec.Code, http.StatusSeeOther)
+		}
+	}
+
+	fresh := login(t, d, testEmail, newPasswd)
+	if fresh.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d for the new password, want %d", fresh.Code, http.StatusSeeOther)
+	}
+	if cookie := sessionCookie(t, fresh); cookie == nil {
+		t.Fatal("the new password did not start a session")
+	} else if rec := getAs(t, d, successPath, cookie); rec.Code != http.StatusOK {
+		t.Errorf("board status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 

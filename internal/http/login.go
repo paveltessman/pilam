@@ -36,18 +36,18 @@ func submitLogin(sessions *session.Manager, authSvc *auth.Service) http.HandlerF
 		logger := logging.FromContext(ctx)
 
 		form := views.LoginForm{
-			Username: strings.TrimSpace(r.PostFormValue(views.FieldUsername)),
+			Email: strings.TrimSpace(r.PostFormValue(views.FieldEmail)),
 		}
 		submittedPassword := r.PostFormValue(views.FieldPassword)
 
 		var v validate.Validator
-		v.Required(views.FieldUsername, form.Username)
+		v.Required(views.FieldEmail, form.Email)
 		v.Required(views.FieldPassword, submittedPassword)
 
 		err := v.Err()
 		var principal auth.Principal
 		if err == nil {
-			_, principal, err = authSvc.Authenticate(ctx, form.Username, submittedPassword)
+			_, principal, err = authSvc.Authenticate(ctx, form.Email, submittedPassword)
 		}
 		if err != nil {
 			errs, ok := validate.From(err)
@@ -57,7 +57,7 @@ func submitLogin(sessions *session.Manager, authSvc *auth.Service) http.HandlerF
 				return
 			}
 
-			logger.Info("login rejected", "username", form.Username, "reason", errs)
+			logger.Info("login rejected", "email", form.Email, "reason", errs)
 			form.Errors = errs
 
 			render(w, r, http.StatusUnauthorized, views.Login(form))
@@ -65,7 +65,7 @@ func submitLogin(sessions *session.Manager, authSvc *auth.Service) http.HandlerF
 		}
 
 		middleware.SetSession(w, r, sessions, principal.String())
-		logging.FromContext(ctx).Info("login accepted", "username", form.Username)
+		logging.FromContext(ctx).Info("login accepted", "email", form.Email)
 		http.Redirect(w, r, successPath, http.StatusSeeOther)
 	}
 	return handler
