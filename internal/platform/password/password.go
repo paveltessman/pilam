@@ -113,6 +113,10 @@ func Check(field, plain string) error {
 	return v.Err()
 }
 
+// Generate returns one random password, for a user who does not pick their own:
+// the first password the CLI and the users section hand out.
+func Generate() string { return rand.Text() }
+
 func derive(p params, plain string, salt []byte, length uint32) []byte {
 	return argon2.IDKey([]byte(plain), salt, p.time, p.memory, p.threads, length)
 }

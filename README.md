@@ -36,6 +36,20 @@ make migration name=add_styles      # scaffold the next one
 
 Migrations are embedded in the binary.
 
+The first account:
+
+```
+make user email=a@b.c name="Ada Lovelace" root=1
+```
+
+The command generates the password and prints it once. Copy it before you close the terminal: nothing stores it, and the new user must change it at the first login. Leave `root=1` out to create a member.
+
+The target reaches Postgres on the published port. To run it inside the dev container instead:
+
+```
+docker compose exec app go run ./cmd/pilam user add --email a@b.c --name "Ada Lovelace" --root
+```
+
 The tests that need a real Postgres — the transaction runner and the migrations — skip unless `TEST_DATABASE_URL` is set. With the stack up:
 
 ```

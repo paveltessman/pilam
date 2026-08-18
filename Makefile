@@ -156,6 +156,15 @@ migration: ## Scaffold a migration: make migration name=add_styles
 seed: ## Load the demo dataset
 	go run ./cmd/pilam seed
 
+USER_USAGE := usage: make user email=a@b.c name="Ada Lovelace" [root=1]
+
+.PHONY: user
+user: ## Create a user: make user email=a@b.c name="Ada Lovelace" [root=1]
+	@test -n "$(email)" || { echo '$(USER_USAGE)' >&2; exit 1; }
+	@test -n "$(name)"  || { echo '$(USER_USAGE)' >&2; exit 1; }
+	@# The command prints the generated password once.
+	go run ./cmd/pilam user add --email '$(email)' --name '$(name)' $(if $(root),--root)
+
 ## ---------------------------------------------------------------- containers
 
 .env:

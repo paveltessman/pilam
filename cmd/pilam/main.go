@@ -25,6 +25,7 @@ func commands() []command {
 	commands := []command{
 		{"serve", "run the HTTP server", runServe},
 		{"migrate", "apply or roll back database migrations (up|down|status|version)", runMigrate},
+		{"user", "manage accounts (add)", runUser},
 		{"seed", "load the demo dataset", func(context.Context, config.Config, []string) error {
 			return fmt.Errorf("seed: %w", errNotImplemented)
 		}},

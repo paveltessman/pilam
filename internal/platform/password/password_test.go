@@ -187,6 +187,17 @@ func TestDummyIsFixedValidHash(t *testing.T) {
 	}
 }
 
+func TestGenerateMeetsThePolicy(t *testing.T) {
+	first := password.Generate()
+
+	if err := password.Check("passwd", first); err != nil {
+		t.Errorf("Generate returned a password the policy refuses: %v", err)
+	}
+	if second := password.Generate(); second == first {
+		t.Error("Generate returned the same password twice")
+	}
+}
+
 // custom writes a PHC string with the cost line the caller names, and a key
 // derived with the cost the caller names. The two are apart on purpose: a test
 // edits the cost line alone to make a hash that no longer describes its key.
