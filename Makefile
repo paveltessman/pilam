@@ -165,6 +165,12 @@ user: ## Create a user: make user email=a@b.c name="Ada Lovelace" [root=1]
 	@# The command prints the generated password once.
 	go run ./cmd/pilam user add --email '$(email)' --name '$(name)' $(if $(root),--root)
 
+.PHONY: psql
+psql: ## Open a psql shell on the dev database
+	@# The credentials are already in the db container environment, so read them
+	@# there rather than parsing .env on the host.
+	docker compose exec db sh -c 'exec psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+
 ## ---------------------------------------------------------------- containers
 
 .env:
