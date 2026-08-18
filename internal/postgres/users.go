@@ -61,6 +61,20 @@ func (u *Users) ByEmail(ctx context.Context, email string) (auth.User, error) {
 	return user(row), nil
 }
 
+// List returns every user, active and inactive, ordered by email.
+func (u *Users) List(ctx context.Context) ([]auth.User, error) {
+	rows, err := u.db.queries(ctx).ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: listing users: %w", err)
+	}
+
+	users := make([]auth.User, len(rows))
+	for i, row := range rows {
+		users[i] = user(row)
+	}
+	return users, nil
+}
+
 // Create writes one new row. A taken email returns auth.ErrEmailTaken.
 func (u *Users) Create(ctx context.Context, in auth.User) error {
 	params := sqlc.CreateUserParams{
@@ -118,6 +132,7 @@ func user(row sqlc.AppUser) auth.User {
 		Active:        row.Active,
 		SessionEpoch:  int(row.SessionEpoch),
 		PasswdExpired: row.PasswdExpired,
+		UpdatedAt:     row.UpdatedAt,
 	}
 }
 

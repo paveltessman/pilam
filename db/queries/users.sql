@@ -25,3 +25,7 @@ SET email          = $2,
     passwd_expired = $9,
     updated_at     = now()
 WHERE id = $1;
+
+-- name: ListUsers :many
+SELECT * FROM app_user
+ORDER BY lower(email);
