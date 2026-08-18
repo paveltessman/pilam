@@ -44,7 +44,7 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 	clk := clock.New(cfg.Timezone)
 	sessionMgr := session.New(cfg.Session.Secret, cfg.Session.TTL, clk)
 	idGen := ids.NewGenerator()
-	authSvc := auth.NewService(pendingUsers{}, pendingAtomic{}, auth.NewThrottle(clk), idGen)
+	authSvc := auth.NewService(postgres.NewUsers(db), db, auth.NewThrottle(clk), idGen)
 
 	srv := &http.Server{
 		Addr: cfg.HTTP.Addr,
