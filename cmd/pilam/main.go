@@ -13,8 +13,6 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/logging"
 )
 
-var errNotImplemented = errors.New("not implemented yet")
-
 type command struct {
 	name    string
 	summary string
@@ -26,9 +24,7 @@ func commands() []command {
 		{"serve", "run the HTTP server", runServe},
 		{"migrate", "apply or roll back database migrations (up|down|status|version)", runMigrate},
 		{"user", "manage accounts (add)", runUser},
-		{"seed", "load the demo dataset", func(context.Context, config.Config, []string) error {
-			return fmt.Errorf("seed: %w", errNotImplemented)
-		}},
+		{"seed", "load the demo dataset", runSeed},
 	}
 	return commands
 }
