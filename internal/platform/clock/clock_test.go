@@ -47,3 +47,14 @@ func businessDay(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
+
+func TestZoneIsTheBusinessTimezone(t *testing.T) {
+	if got := clock.Zone(clock.New(utcPlus3)); got != utcPlus3 {
+		t.Errorf("Zone = %s, want %s", got, utcPlus3)
+	}
+
+	fixed := clock.Fixed(time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC), utcPlus3)
+	if got := clock.Zone(fixed); got != utcPlus3 {
+		t.Errorf("Zone of the fixed clock = %s, want %s", got, utcPlus3)
+	}
+}

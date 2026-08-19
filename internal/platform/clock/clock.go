@@ -28,6 +28,10 @@ func New(tz *time.Location) Clock {
 	return systemClock{tz: checkLocation(tz)}
 }
 
+// Zone returns the business timezone the clock reckons in. Use it to render a
+// stored instant, which carries whichever zone the store handed it back in.
+func Zone(c Clock) *time.Location { return c.Now().Location() }
+
 type systemClock struct{ tz *time.Location }
 
 func (c systemClock) Now() time.Time   { return time.Now().In(c.tz) }
