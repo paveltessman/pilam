@@ -50,6 +50,15 @@ The target reaches Postgres on the published port. To run it inside the dev cont
 docker compose exec app go run ./cmd/pilam user add --email a@b.c --name "Ada Lovelace" --root
 ```
 
+Demo data:
+
+```
+make seed                                  # the whole roster
+make seed users=5 domain=brand.example     # a shorter list, on another domain
+```
+
+`pilam seed` loads the demo dataset. Today the dataset is the company: 24 employees, two of them root and two deactivated. Every seeded user logs in with the one password the command prints, and lands on the board without changing it first. A second run over the same database writes nothing and reports the rows it skipped.
+
 The tests that need a real Postgres — the transaction runner and the migrations — skip unless `TEST_DATABASE_URL` is set. With the stack up:
 
 ```

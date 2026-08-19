@@ -49,6 +49,7 @@ var (
 	ErrInactive    = errors.New("auth: user is deactivated")
 	ErrNoUser      = errors.New("auth: no such user")
 	ErrEmailTaken  = errors.New("auth: email already taken")
+	ErrIDTaken     = errors.New("auth: identifier already taken")
 
 	// ErrSelfLockout is a user removing their own access: deactivating
 	// themselves, or dropping their own root role. Somebody else must do it,
@@ -265,9 +266,10 @@ func (s *Service) Create(ctx context.Context, in NewUser) (User, error) {
 }
 
 // Invite creates a user with a generated first password, and hands the password
-// back in plain text.
+// back in plain text. The user must replace it at the first login.
 func (s *Service) Invite(ctx context.Context, in NewUser) (User, string, error) {
 	in.Passwd = password.Generate()
+	in.PasswdExpired = true
 
 	user, err := s.Create(ctx, in)
 	if err != nil {
@@ -278,11 +280,12 @@ func (s *Service) Invite(ctx context.Context, in NewUser) (User, string, error) 
 
 // NewUser is the arguments for Create. Passwd is the first password, in plain text.
 type NewUser struct {
-	Email     string
-	FirstName string
-	LastName  string
-	Role      Role
-	Passwd    string
+	Email         string
+	FirstName     string
+	LastName      string
+	Role          Role
+	Passwd        string
+	PasswdExpired bool
 }
 
 // user checks the submitted values and turns them into the User struct.
@@ -313,7 +316,7 @@ func (in NewUser) user(id ids.ID) (User, error) {
 		Role:          in.Role,
 		Active:        true,
 		SessionEpoch:  1,
-		PasswdExpired: true,
+		PasswdExpired: in.PasswdExpired,
 	}
 
 	return user, nil

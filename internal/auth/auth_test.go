@@ -402,11 +402,12 @@ func TestCreateWritesCorrectFields(t *testing.T) {
 	svc := newTestService(t, users)
 
 	in := NewUser{
-		Email:     " Ada@Example.COM ",
-		FirstName: "Ada",
-		LastName:  "Lovelace",
-		Role:      RootRole,
-		Passwd:    goodPasswd,
+		Email:         " Ada@Example.COM ",
+		FirstName:     "Ada",
+		LastName:      "Lovelace",
+		Role:          RootRole,
+		Passwd:        goodPasswd,
+		PasswdExpired: true,
 	}
 
 	user, err := svc.Create(t.Context(), in)
@@ -418,7 +419,7 @@ func TestCreateWritesCorrectFields(t *testing.T) {
 	case user.Email != "ada@example.com":
 		t.Errorf("Create did not normalize the email: %q", user.Email)
 	case !user.PasswdExpired:
-		t.Error("Create did not set passwd_expired")
+		t.Error("Create did not carry passwd_expired")
 	case !user.Active:
 		t.Error("Create did not set active")
 	case user.SessionEpoch != 1:
@@ -429,6 +430,25 @@ func TestCreateWritesCorrectFields(t *testing.T) {
 
 	if _, _, err := svc.Authenticate(t.Context(), "ada@example.com", goodPasswd); err != nil {
 		t.Errorf("The new user can't log in: %v", err)
+	}
+}
+
+func TestCreateLeavesChosenPasswordUnexpired(t *testing.T) {
+	svc := newTestService(t, newFakeUsers())
+
+	user, err := svc.Create(t.Context(), NewUser{
+		Email:     "ada@example.com",
+		FirstName: "Ada",
+		LastName:  "Lovelace",
+		Role:      MemberRole,
+		Passwd:    goodPasswd,
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	if user.PasswdExpired {
+		t.Error("Create expired a password the caller chose")
 	}
 }
 
