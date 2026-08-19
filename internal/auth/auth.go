@@ -136,7 +136,7 @@ type Users interface {
 	ByID(ctx context.Context, id ids.ID) (User, error)
 	ByEmail(ctx context.Context, email string) (User, error)
 
-	// List returns every user, active and inactive, ordered by email.
+	// List returns every user, active and inactive, ordered by name.
 	List(ctx context.Context) ([]User, error)
 
 	Create(ctx context.Context, user User) error
@@ -460,7 +460,7 @@ func (s *Service) ResetPassword(ctx context.Context, userID ids.ID) (string, err
 	return plain, nil
 }
 
-// List returns the users the section shows, ordered by email. It keeps the
+// List returns the users the section shows, ordered by name. It keeps the
 // users that match query, and every user when query is empty.
 func (s *Service) List(ctx context.Context, query string) ([]Account, error) {
 	users, err := s.users.List(ctx)

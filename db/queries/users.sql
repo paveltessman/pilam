@@ -28,4 +28,4 @@ WHERE id = $1;
 
 -- name: ListUsers :many
 SELECT * FROM app_user
-ORDER BY lower(email);
+ORDER BY first_name;

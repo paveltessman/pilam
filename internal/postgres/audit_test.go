@@ -19,7 +19,7 @@ func auditDB(t *testing.T) (*Audit, *Users, auth.User) {
 
 	db := openTestDB(t)
 	users := NewUsers(db)
-	actor := create(t, users, sample("root@example.com"))
+	actor := create(t, users, sample("root@example.com", "Ada"))
 	return NewAudit(db), users, actor
 }
 
@@ -150,7 +150,7 @@ func TestAuditRecordWithoutEntriesWritesNothing(t *testing.T) {
 func TestAuditEntryRollsBackWithTheWriteItDescribes(t *testing.T) {
 	recorder, users, actor := auditDB(t)
 	failure := errors.New("the work failed after the write")
-	target := sample("ada@example.com")
+	target := sample("ada@example.com", "Ada")
 
 	write := func(ctx context.Context) error {
 		if err := users.Create(ctx, target); err != nil {
@@ -178,7 +178,7 @@ func TestAuditEntryRollsBackWithTheWriteItDescribes(t *testing.T) {
 
 func TestAuditEntryLandsWithTheWriteItDescribes(t *testing.T) {
 	recorder, users, actor := auditDB(t)
-	target := sample("ada@example.com")
+	target := sample("ada@example.com", "Ada")
 
 	write := func(ctx context.Context) error {
 		if err := users.Create(ctx, target); err != nil {
@@ -226,7 +226,7 @@ func TestNewAuditRefusesNilDatabase(t *testing.T) {
 
 func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
 	recorder, users, actor := auditDB(t)
-	other := create(t, users, sample("grace@example.com"))
+	other := create(t, users, sample("grace@example.com", "Ada"))
 
 	// Three entries about one user, and one about another.
 	var written []audit.Entry

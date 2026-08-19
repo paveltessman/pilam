@@ -20,11 +20,11 @@ func usersDB(t *testing.T) *Users {
 }
 
 // sample is one complete row.
-func sample(email string) auth.User {
+func sample(email, fristName string) auth.User {
 	return auth.User{
 		ID:            gen.New(),
 		Email:         email,
-		FirstName:     "Ada",
+		FirstName:     fristName,
 		LastName:      "Lovelace",
 		PasswdHash:    "$argon2id$v=19$m=65536,t=3,p=4$c2FsdHNhbHRzYWx0c2E$aGFzaA",
 		Role:          auth.RootRole,
@@ -61,7 +61,7 @@ func sameUser(t *testing.T, got, want auth.User) {
 
 func TestUsersRoundTripEveryField(t *testing.T) {
 	users := usersDB(t)
-	want := create(t, users, sample("ada@example.com"))
+	want := create(t, users, sample("ada@example.com", "Ada"))
 
 	got, err := users.ByID(t.Context(), want.ID)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestUsersRoundTripEveryField(t *testing.T) {
 
 func TestUsersByEmailIgnoresCase(t *testing.T) {
 	users := usersDB(t)
-	want := create(t, users, sample("ada@example.com"))
+	want := create(t, users, sample("ada@example.com", "Ada"))
 
 	got, err := users.ByEmail(t.Context(), "Ada@Example.COM")
 	if err != nil {
@@ -94,10 +94,10 @@ func TestUsersReportMissingRowAsErrNoUser(t *testing.T) {
 
 func TestUsersRefuseTakenEmail(t *testing.T) {
 	users := usersDB(t)
-	create(t, users, sample("ada@example.com"))
+	create(t, users, sample("ada@example.com", "Ada"))
 
 	for _, email := range []string{"ada@example.com", "ADA@example.com"} {
-		err := users.Create(t.Context(), sample(email))
+		err := users.Create(t.Context(), sample(email, "Ada"))
 		if !errors.Is(err, auth.ErrEmailTaken) {
 			t.Errorf("Create %q error = %v, want %v", email, err, auth.ErrEmailTaken)
 		}
@@ -106,18 +106,18 @@ func TestUsersRefuseTakenEmail(t *testing.T) {
 
 func TestUsersHoldEmailOfInactiveUser(t *testing.T) {
 	users := usersDB(t)
-	taken := sample("ada@example.com")
+	taken := sample("ada@example.com", "Ada")
 	taken.Active = false
 	create(t, users, taken)
 
-	if err := users.Create(t.Context(), sample("ada@example.com")); !errors.Is(err, auth.ErrEmailTaken) {
+	if err := users.Create(t.Context(), sample("ada@example.com", "Ada")); !errors.Is(err, auth.ErrEmailTaken) {
 		t.Errorf("Create error = %v, want %v", err, auth.ErrEmailTaken)
 	}
 }
 
 func TestUsersUpdateWritesEveryField(t *testing.T) {
 	users := usersDB(t)
-	want := create(t, users, sample("ada@example.com"))
+	want := create(t, users, sample("ada@example.com", "Ada"))
 
 	written, err := users.ByID(t.Context(), want.ID)
 	if err != nil {
@@ -148,10 +148,10 @@ func TestUsersUpdateWritesEveryField(t *testing.T) {
 	}
 }
 
-func TestUsersListOrdersByEmailAndHoldsInactiveRows(t *testing.T) {
+func TestUsersListOrdersByFirstNameAndHoldsInactiveRows(t *testing.T) {
 	users := usersDB(t)
-	create(t, users, sample("grace@example.com"))
-	create(t, users, sample("ada@example.com"))
+	create(t, users, sample("bob@example.com", "Bob"))
+	create(t, users, sample("ada@example.com", "Ada"))
 
 	got, err := users.List(t.Context())
 	if err != nil {
@@ -163,8 +163,8 @@ func TestUsersListOrdersByEmailAndHoldsInactiveRows(t *testing.T) {
 	}
 	// sample writes an inactive row, so a list that holds these two holds
 	// deactivated users as well.
-	if got[0].Email != "ada@example.com" || got[1].Email != "grace@example.com" {
-		t.Errorf("List is not ordered by email: %q then %q", got[0].Email, got[1].Email)
+	if got[0].FirstName != "Ada" || got[1].FirstName != "Bob" {
+		t.Errorf("List is not ordered by first name: %q then %q", got[0].FirstName, got[1].FirstName)
 	}
 }
 
@@ -183,15 +183,15 @@ func TestUsersListIsEmptyWithoutRows(t *testing.T) {
 func TestUsersUpdateReportsMissingRow(t *testing.T) {
 	users := usersDB(t)
 
-	if err := users.Update(t.Context(), sample("ada@example.com")); !errors.Is(err, auth.ErrNoUser) {
+	if err := users.Update(t.Context(), sample("ada@example.com", "Ada")); !errors.Is(err, auth.ErrNoUser) {
 		t.Errorf("Update error = %v, want %v", err, auth.ErrNoUser)
 	}
 }
 
 func TestUsersUpdateRefusesTakenEmail(t *testing.T) {
 	users := usersDB(t)
-	create(t, users, sample("ada@example.com"))
-	mover := create(t, users, sample("grace@example.com"))
+	create(t, users, sample("ada@example.com", "Ada"))
+	mover := create(t, users, sample("grace@example.com", "Ada"))
 
 	mover.Email = "ada@example.com"
 	if err := users.Update(t.Context(), mover); !errors.Is(err, auth.ErrEmailTaken) {
@@ -204,7 +204,7 @@ func TestUsersWriteRollsBackWithTransaction(t *testing.T) {
 	users := NewUsers(db)
 
 	sentinel := errors.New("the work after the write failed")
-	user := sample("ada@example.com")
+	user := sample("ada@example.com", "Ada")
 
 	err := db.InTx(t.Context(), func(ctx context.Context) error {
 		if err := users.Create(ctx, user); err != nil {
@@ -224,7 +224,7 @@ func TestUsersWriteRollsBackWithTransaction(t *testing.T) {
 func TestUsersWriteCommitsWithTransaction(t *testing.T) {
 	db := openTestDB(t)
 	users := NewUsers(db)
-	user := sample("ada@example.com")
+	user := sample("ada@example.com", "Ada")
 
 	err := db.InTx(t.Context(), func(ctx context.Context) error {
 		return users.Create(ctx, user)

@@ -64,7 +64,7 @@ func (u *Users) ByEmail(ctx context.Context, email string) (auth.User, error) {
 	return user(row), nil
 }
 
-// List returns every user, active and inactive, ordered by email.
+// List returns every user, active and inactive, ordered by first name.
 func (u *Users) List(ctx context.Context) ([]auth.User, error) {
 	rows, err := u.db.queries(ctx).ListUsers(ctx)
 	if err != nil {
