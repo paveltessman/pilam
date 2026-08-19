@@ -24,6 +24,9 @@ const (
 
 	// emailIndex is the unique index over lower(email), from 00002_users.sql.
 	emailIndex = "app_user_email_key"
+
+	// idIndex is the primary key over id, from the same migration.
+	idIndex = "app_user_pkey"
 )
 
 type Users struct {
@@ -138,8 +141,15 @@ func user(row sqlc.AppUser) auth.User {
 
 func writeError(err error) error {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation && pgErr.ConstraintName == emailIndex {
+	if !errors.As(err, &pgErr) || pgErr.Code != uniqueViolation {
+		return err
+	}
+
+	switch pgErr.ConstraintName {
+	case emailIndex:
 		return fmt.Errorf("%w: %w", auth.ErrEmailTaken, err)
+	case idIndex:
+		return fmt.Errorf("%w: %w", auth.ErrIDTaken, err)
 	}
 	return err
 }
