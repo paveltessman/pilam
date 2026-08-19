@@ -13,7 +13,12 @@ const (
 	FieldUserLastName  = "last_name"
 	FieldUserRole      = "role"
 	FieldUserActive    = "active"
+	FieldUserSearch    = "q"
 )
+
+// usersResults is the element the search swaps. The list renders it, and a
+// search request answers with what goes inside it.
+const usersResults = "users-results"
 
 // UsersPath is where the section is mounted. The links and the forms of this
 // screen build on it, and the router mounts the section on it.
@@ -22,10 +27,21 @@ const UsersPath = "/users"
 // roleOptions is the role select, in the order it is offered.
 var roleOptions = []auth.Role{auth.MemberRole, auth.RootRole}
 
-// UsersPage is the list: every user, active and inactive.
+// UsersPage is the list: every user the search keeps, active and inactive.
+// Query is what the user typed, and an empty Query lists everybody.
 type UsersPage struct {
 	Chrome Chrome
 	Users  []auth.Account
+	Query  string
+}
+
+// EmptyText tells the two empty lists apart: a section that holds no users, and
+// a search that matches none of them.
+func (p UsersPage) EmptyText() string {
+	if p.Query != "" {
+		return labels.UsersNoMatch
+	}
+	return labels.UsersEmpty
 }
 
 templ Users(page UsersPage) {
@@ -38,31 +54,64 @@ templ Users(page UsersPage) {
 					{ labels.ActionAddUser }
 				}
 			</div>
-			if len(page.Users) == 0 {
-				<div class="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-					<p>{ labels.UsersEmpty }</p>
-				</div>
-			} else {
-				<div class="overflow-x-auto rounded-lg border">
-					<table class="w-full text-sm">
-						<thead class="border-b bg-muted/50 text-left text-muted-foreground">
-							<tr>
-								<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersEmail }</th>
-								<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersName }</th>
-								<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersRole }</th>
-								<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersState }</th>
-								<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersLastChange }</th>
-							</tr>
-						</thead>
-						<tbody>
-							for _, account := range page.Users {
-								@userRow(account)
-							}
-						</tbody>
-					</table>
-				</div>
-			}
+			@usersSearch(page.Query)
+			<div id={ usersResults }>
+				@UsersResults(page)
+			</div>
 		</main>
+	}
+}
+
+// usersSearch is the box above the list. htmx swaps the table as the user
+// types. Without htmx the form still works: it posts nothing, it submits the
+// same GET the links use, and the page comes back filtered.
+templ usersSearch(query string) {
+	<form method="get" action={ templ.SafeURL(UsersPath) } role="search" class="mb-4">
+		@input.Input(input.Props{
+			ID:          FieldUserSearch,
+			Name:        FieldUserSearch,
+			Type:        input.TypeSearch,
+			Value:       query,
+			Placeholder: labels.UsersSearchHint,
+			Attributes: templ.Attributes{
+				"aria-label":   labels.UsersSearch,
+				"autocomplete": "off",
+				"hx-get":       UsersPath,
+				"hx-trigger":   "input changed delay:250ms, search",
+				"hx-target":    "#" + usersResults,
+				"hx-swap":      "innerHTML",
+				"hx-push-url":  "true",
+			},
+		})
+	</form>
+}
+
+// UsersResults is the table alone. The full page renders it inside the list,
+// and a search request answers with it and nothing else.
+templ UsersResults(page UsersPage) {
+	if len(page.Users) == 0 {
+		<div class="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+			<p>{ page.EmptyText() }</p>
+		</div>
+	} else {
+		<div class="overflow-x-auto rounded-lg border">
+			<table class="w-full text-sm">
+				<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+					<tr>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersEmail }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersName }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersRole }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersState }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersLastChange }</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, account := range page.Users {
+						@userRow(account)
+					}
+				</tbody>
+			</table>
+		</div>
 	}
 }
 
