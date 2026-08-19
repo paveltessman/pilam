@@ -99,8 +99,8 @@ templ UsersResults(page UsersPage) {
 			<table class="w-full text-sm">
 				<thead class="border-b bg-muted/50 text-left text-muted-foreground">
 					<tr>
-						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersEmail }</th>
 						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersName }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersEmail }</th>
 						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersRole }</th>
 						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersState }</th>
 						<th scope="col" class="px-4 py-3 font-medium">{ labels.UsersLastChange }</th>
@@ -120,10 +120,10 @@ templ userRow(account auth.Account) {
 	<tr class="border-b last:border-0 hover:bg-muted/50">
 		<td class="px-4 py-3">
 			<a href={ templ.SafeURL(UsersPath + "/" + account.ID.String()) } class="font-medium underline-offset-4 hover:underline">
-				{ account.Email }
+				{ labels.Name(account.FirstName, account.LastName) }
 			</a>
 		</td>
-		<td class="px-4 py-3">{ labels.Name(account.FirstName, account.LastName) }</td>
+		<td class="px-4 py-3">{ account.Email }</td>
 		<td class="px-4 py-3">{ roleLabel(account.Role) }</td>
 		<td class="px-4 py-3">
 			if account.Active {
