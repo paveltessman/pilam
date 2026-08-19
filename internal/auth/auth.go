@@ -457,18 +457,48 @@ func (s *Service) ResetPassword(ctx context.Context, userID ids.ID) (string, err
 	return plain, nil
 }
 
-// List returns every user the section shows, ordered by email.
-func (s *Service) List(ctx context.Context) ([]Account, error) {
+// List returns the users the section shows, ordered by email. It keeps the
+// users that match query, and every user when query is empty.
+func (s *Service) List(ctx context.Context, query string) ([]Account, error) {
 	users, err := s.users.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("auth: listing users: %w", err)
 	}
 
-	accounts := make([]Account, len(users))
-	for i, user := range users {
-		accounts[i] = user.Account()
+	terms := strings.Fields(strings.ToLower(query))
+
+	accounts := make([]Account, 0, len(users))
+	for _, user := range users {
+		if matches(user, terms) {
+			accounts = append(accounts, user.Account())
+		}
 	}
 	return accounts, nil
+}
+
+// matches reports whether the user answers every term. A term answers when it
+// is part of the address, of the first name or of the last name. Every term
+// must match, so "ada lov" finds Ada Lovelace and "ada hop" finds nobody.
+func matches(user User, terms []string) bool {
+	fields := []string{
+		strings.ToLower(user.Email),
+		strings.ToLower(user.FirstName),
+		strings.ToLower(user.LastName),
+	}
+
+	for _, term := range terms {
+		found := false
+		for _, field := range fields {
+			if strings.Contains(field, term) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // Account returns one user.
