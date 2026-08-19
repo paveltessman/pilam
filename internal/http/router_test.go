@@ -25,7 +25,16 @@ func (p stubPinger) Ping(context.Context) error { return p.err }
 
 // deps is what the composition root would have built, with the database
 // swapped for a stub, media in a throwaway directory, and the log discarded.
+// deps is the wiring a test serves requests with.
 func deps(t *testing.T) Deps {
+	t.Helper()
+	d, _ := auditedDeps(t)
+	return d
+}
+
+// baseDeps is everything that does not depend on the audit trail. auditedDeps
+// adds the service and the log, which share one trail.
+func baseDeps(t *testing.T) Deps {
 	t.Helper()
 	d := Deps{
 		DB:         stubPinger{},
@@ -33,7 +42,6 @@ func deps(t *testing.T) Deps {
 		IDs:        ids.NewGenerator(),
 		Media:      mediaStore(t),
 		SessionMgr: session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
-		AuthSvc:    authService(t),
 	}
 	return d
 }

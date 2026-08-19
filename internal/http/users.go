@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/views"
@@ -94,12 +95,18 @@ func createUser(authSvc *auth.Service) http.HandlerFunc {
 	return handler
 }
 
-// showUser renders the edit form for one user.
-func showUser(authSvc *auth.Service) http.HandlerFunc {
+// showUser renders the edit form for one user, and the audit trail of that user
+// under it.
+func showUser(authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
 		account, ok := loadUser(w, r, authSvc)
+		if !ok {
+			return
+		}
+
+		trail, ok := loadTrail(w, r, authSvc, log, account.ID)
 		if !ok {
 			return
 		}
@@ -112,6 +119,7 @@ func showUser(authSvc *auth.Service) http.HandlerFunc {
 			LastName:  account.LastName,
 			Role:      account.Role,
 			Active:    account.Active,
+			Trail:     trail,
 		}
 		render(w, r, http.StatusOK, views.User(form))
 	}
@@ -119,7 +127,7 @@ func showUser(authSvc *auth.Service) http.HandlerFunc {
 }
 
 // saveUser writes the name, the role and the active flag.
-func saveUser(authSvc *auth.Service) http.HandlerFunc {
+func saveUser(authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -160,6 +168,13 @@ func saveUser(authSvc *auth.Service) http.HandlerFunc {
 			logger.Info("user update rejected", "user", account.ID, "reason", errs)
 			form.Errors = errs
 		}
+
+		// The screen comes back whole: the refusal, and the trail under it.
+		trail, ok := loadTrail(w, r, authSvc, log, account.ID)
+		if !ok {
+			return
+		}
+		form.Trail = trail
 
 		render(w, r, http.StatusUnprocessableEntity, views.User(form))
 	}
@@ -231,6 +246,38 @@ func loadUser(w http.ResponseWriter, r *http.Request, authSvc *auth.Service) (au
 	}
 
 	return account, true
+}
+
+// loadTrail reads the audit trail of one user and names the actor of every
+// entry. It answers 500 itself and reports false when the trail cannot be read.
+func loadTrail(w http.ResponseWriter, r *http.Request, authSvc *auth.Service, log *audit.Log, userID ids.ID) ([]views.UserEvent, bool) {
+	ctx := r.Context()
+	logger := logging.FromContext(ctx)
+
+	entries, err := log.Entity(ctx, audit.EntityUser, userID, audit.DefaultLimit)
+	if err != nil {
+		logger.Error("loading the audit trail failed", "user", userID, "err", err)
+		writeServerError(w)
+		return nil, false
+	}
+
+	actorIDs := make([]ids.ID, len(entries))
+	for i, entry := range entries {
+		actorIDs[i] = entry.ActorID
+	}
+
+	actors, err := authSvc.Actors(ctx, actorIDs...)
+	if err != nil {
+		logger.Error("naming the actors of the audit trail failed", "user", userID, "err", err)
+		writeServerError(w)
+		return nil, false
+	}
+
+	events := make([]views.UserEvent, len(entries))
+	for i, entry := range entries {
+		events[i] = views.UserEvent{Entry: entry, Actor: actors[entry.ActorID]}
+	}
+	return events, true
 }
 
 // submittedUser reads the fields the create and the edit form post. The service
