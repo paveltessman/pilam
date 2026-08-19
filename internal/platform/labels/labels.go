@@ -67,6 +67,9 @@ const (
 	UsersSearchHint = "Имя, фамилия или почта"
 	UsersNoMatch    = "Ничего не найдено"
 
+	// What the card reports after it saves the changes.
+	UsersSaved = "Изменения сохранены."
+
 	// The rule that keeps the last root from locking the section.
 	UsersSelfLockout = "Нельзя снять доступ с самого себя. Это должен сделать другой администратор."
 )

@@ -141,6 +141,7 @@ templ userRow(account auth.Account) {
 // the address they log in with.
 //
 // Alert carries a refusal that belongs to the form rather than to one field.
+// Notice carries the opposite: the card reports what it saved.
 type UserForm struct {
 	Chrome    Chrome
 	UserID    string
@@ -150,6 +151,7 @@ type UserForm struct {
 	Role      auth.Role
 	Active    bool
 	Alert     string
+	Notice    string
 	Errors    validate.FieldErrors
 
 	// Trail is what the audit log holds about this user, newest first. The
@@ -218,6 +220,11 @@ templ User(form UserForm) {
 			if form.Alert != "" {
 				<p role="alert" class="mb-6 rounded-md border border-destructive/50 px-3 py-2 text-sm text-destructive">
 					{ form.Alert }
+				</p>
+			}
+			if form.Notice != "" {
+				<p role="status" class="mb-6 rounded-md border border-primary/50 bg-primary/5 px-3 py-2 text-sm text-foreground">
+					{ form.Notice }
 				</p>
 			}
 			<form method="post" action={ templ.SafeURL(form.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">

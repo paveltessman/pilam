@@ -121,6 +121,9 @@ func showUser(authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 			Active:    account.Active,
 			Trail:     trail,
 		}
+		if isSaved(r) {
+			form.Notice = labels.UsersSaved
+		}
 		render(w, r, http.StatusOK, views.User(form))
 	}
 	return handler
@@ -151,7 +154,7 @@ func saveUser(authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 		switch {
 		case err == nil:
 			logger.Info("user updated", "user", account.ID)
-			http.Redirect(w, r, usersPath, http.StatusSeeOther)
+			redirectSaved(w, r, usersPath+"/"+form.UserID)
 			return
 
 		case errors.Is(err, auth.ErrSelfLockout):

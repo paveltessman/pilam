@@ -339,11 +339,19 @@ func TestEditUserWritesNameAndRole(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if got := rec.Header().Get("Location"); got != usersPath {
-		t.Errorf("Location = %q, want %q", got, usersPath)
+	if got, want := rec.Header().Get("Location"), path+"?saved=1"; got != want {
+		t.Errorf("Location = %q, want %q", got, want)
+	}
+
+	// The card the browser lands on reports the save. A plain visit does not.
+	if saved := getAs(t, d, path+"?saved=1", cookie).Body.String(); !strings.Contains(saved, labels.UsersSaved) {
+		t.Error("the card after the save does not report it")
 	}
 
 	body := getAs(t, d, path, cookie).Body.String()
+	if strings.Contains(body, labels.UsersSaved) {
+		t.Error("a plain visit to the card reports a save")
+	}
 	for _, want := range []string{`value="Augusta"`, `value="King"`, `value="root" selected`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the form does not carry %q", want)
