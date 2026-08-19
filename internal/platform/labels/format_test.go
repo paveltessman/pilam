@@ -26,6 +26,27 @@ func TestDate(t *testing.T) {
 	}
 }
 
+func TestName(t *testing.T) {
+	testData := map[string]struct {
+		first, last string
+		want        string
+	}{
+		"both parts":      {"Ada", "Lovelace", "Ada Lovelace"},
+		"padded":          {"  Ada  ", "  Lovelace  ", "Ada Lovelace"},
+		"first only":      {"Ada", "", "Ada"},
+		"last only":       {"", "Lovelace", "Lovelace"},
+		"neither":         {"", "", Empty},
+		"whitespace only": {" ", "\t", Empty},
+	}
+	for name, tc := range testData {
+		t.Run(name, func(t *testing.T) {
+			if got := Name(tc.first, tc.last); got != tc.want {
+				t.Errorf("Name(%q, %q) = %q, want %q", tc.first, tc.last, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestDelta(t *testing.T) {
 	testData := map[string]struct {
 		in   int

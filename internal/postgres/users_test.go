@@ -43,6 +43,22 @@ func create(t *testing.T, users *Users, user auth.User) auth.User {
 	return user
 }
 
+// sameUser compares the row that came back with the one the test wrote.
+//
+// UpdatedAt is left out: the store stamps it, so no caller can state it. The
+// tests below check it on its own.
+func sameUser(t *testing.T, got, want auth.User) {
+	t.Helper()
+
+	want.UpdatedAt = got.UpdatedAt
+	if got != want {
+		t.Errorf("ByID = %+v, want %+v", got, want)
+	}
+	if got.UpdatedAt.IsZero() {
+		t.Error("The row carries no UpdatedAt")
+	}
+}
+
 func TestUsersRoundTripEveryField(t *testing.T) {
 	users := usersDB(t)
 	want := create(t, users, sample("ada@example.com"))
@@ -51,9 +67,7 @@ func TestUsersRoundTripEveryField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ByID: %v", err)
 	}
-	if got != want {
-		t.Errorf("ByID = %+v, want %+v", got, want)
-	}
+	sameUser(t, got, want)
 }
 
 func TestUsersByEmailIgnoresCase(t *testing.T) {
@@ -64,9 +78,7 @@ func TestUsersByEmailIgnoresCase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ByEmail: %v", err)
 	}
-	if got != want {
-		t.Errorf("ByEmail = %+v, want %+v", got, want)
-	}
+	sameUser(t, got, want)
 }
 
 func TestUsersReportMissingRowAsErrNoUser(t *testing.T) {
@@ -107,6 +119,11 @@ func TestUsersUpdateWritesEveryField(t *testing.T) {
 	users := usersDB(t)
 	want := create(t, users, sample("ada@example.com"))
 
+	written, err := users.ByID(t.Context(), want.ID)
+	if err != nil {
+		t.Fatalf("ByID: %v", err)
+	}
+
 	want.Email = "ada.lovelace@example.com"
 	want.FirstName = "Augusta"
 	want.LastName = "King"
@@ -124,8 +141,42 @@ func TestUsersUpdateWritesEveryField(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ByID: %v", err)
 	}
-	if got != want {
-		t.Errorf("ByID = %+v, want %+v", got, want)
+	sameUser(t, got, want)
+
+	if !got.UpdatedAt.After(written.UpdatedAt) {
+		t.Errorf("UpdatedAt = %v, want it after the create stamp %v", got.UpdatedAt, written.UpdatedAt)
+	}
+}
+
+func TestUsersListOrdersByEmailAndHoldsInactiveRows(t *testing.T) {
+	users := usersDB(t)
+	create(t, users, sample("grace@example.com"))
+	create(t, users, sample("ada@example.com"))
+
+	got, err := users.List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("List returned %d rows, want 2", len(got))
+	}
+	// sample writes an inactive row, so a list that holds these two holds
+	// deactivated users as well.
+	if got[0].Email != "ada@example.com" || got[1].Email != "grace@example.com" {
+		t.Errorf("List is not ordered by email: %q then %q", got[0].Email, got[1].Email)
+	}
+}
+
+func TestUsersListIsEmptyWithoutRows(t *testing.T) {
+	users := usersDB(t)
+
+	got, err := users.List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("List returned %d rows, want 0", len(got))
 	}
 }
 

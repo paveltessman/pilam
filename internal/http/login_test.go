@@ -211,7 +211,7 @@ func TestDeactivatedUserLosesTheSession(t *testing.T) {
 		t.Fatal("no session cookie was set")
 	}
 
-	if err := d.AuthSvc.SetActive(t.Context(), testUserID, false); err != nil {
+	if err := deactivate(t, d, testUserID); err != nil {
 		t.Fatalf("deactivating the user: %v", err)
 	}
 
@@ -231,7 +231,7 @@ func TestDeactivatedUserLosesTheSession(t *testing.T) {
 
 func TestDeactivatedUserCannotLogInAgain(t *testing.T) {
 	d := deps(t)
-	if err := d.AuthSvc.SetActive(t.Context(), testUserID, false); err != nil {
+	if err := deactivate(t, d, testUserID); err != nil {
 		t.Fatalf("deactivating the user: %v", err)
 	}
 

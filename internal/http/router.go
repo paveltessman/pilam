@@ -7,12 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/a-h/templ"
-
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/static"
-	"github.com/paveltessman/pilam/internal/http/views"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 	"github.com/paveltessman/pilam/internal/platform/media"
@@ -70,9 +67,19 @@ func NewRouter(deps Deps) http.Handler {
 		middleware.RequireIdentity(loginPath),
 		middleware.RequirePasswordChange(changePasswordPath),
 	)
-	mux.Handle("GET /{$}", guard(templ.Handler(views.Board())))
+	mux.Handle("GET /{$}", guard(showBoard()))
 	mux.Handle("GET "+changePasswordPath, guard(showChangePassword()))
 	mux.Handle("POST "+changePasswordPath, guard(submitChangePassword(deps.SessionMgr, deps.AuthSvc)))
+
+	// S5, the users section. Root only: a member gets a 403 on every route of
+	// it, and never sees the nav link that leads here.
+	root := middleware.Chain(guard, middleware.RequireRole(auth.RootRole))
+	mux.Handle("GET "+usersPath, root(showUsers(deps.AuthSvc)))
+	mux.Handle("POST "+usersPath, root(createUser(deps.AuthSvc)))
+	mux.Handle("GET "+userNewPath, root(showNewUser()))
+	mux.Handle("GET "+userPath, root(showUser(deps.AuthSvc)))
+	mux.Handle("POST "+userPath, root(saveUser(deps.AuthSvc)))
+	mux.Handle("POST "+userPassPath, root(resetUserPasswd(deps.AuthSvc)))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;

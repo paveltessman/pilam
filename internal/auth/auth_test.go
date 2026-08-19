@@ -3,8 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
+	"maps"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,6 +55,15 @@ func (f *fakeUsers) ByEmail(_ context.Context, email string) (User, error) {
 		}
 	}
 	return User{}, ErrNoUser
+}
+
+func (f *fakeUsers) List(_ context.Context) ([]User, error) {
+	if f.failWith != nil {
+		return nil, f.failWith
+	}
+	users := slices.Collect(maps.Values(f.rows))
+	slices.SortFunc(users, func(a, b User) int { return strings.Compare(a.Email, b.Email) })
+	return users, nil
 }
 
 func (f *fakeUsers) Create(_ context.Context, user User) error {
@@ -139,6 +150,17 @@ func seedUser(t *testing.T, email string) User {
 		SessionEpoch: 3,
 	}
 	return user
+}
+
+// asIs is the edit that changes nothing: every field where the row holds it. A
+// test that changes one field starts here.
+func asIs(user User) UpdateParams {
+	return UpdateParams{
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		Role:      user.Role,
+		Active:    user.Active,
+	}
 }
 
 // wantRejected fails the test unless err is the login rejection.
@@ -454,38 +476,44 @@ func TestCreateChecksItsInput(t *testing.T) {
 	}
 }
 
-func TestSetActiveBumpsEpochOnlyWhenDeactivating(t *testing.T) {
+func TestUpdateBumpsEpochOnlyWhenDeactivating(t *testing.T) {
 	user := seedUser(t, "ada@example.com")
 	users := newFakeUsers(user)
 	svc := newTestService(t, users)
 
-	if err := svc.SetActive(t.Context(), user.ID, false); err != nil {
-		t.Fatalf("SetActive(false) failed: %v", err)
+	off := asIs(user)
+	off.Active = false
+	if err := svc.Update(t.Context(), user.ID, off); err != nil {
+		t.Fatalf("Update to inactive failed: %v", err)
 	}
-	off := users.rows[user.ID]
-	if off.Active {
-		t.Error("SetActive(false) left the user active")
+	stored := users.rows[user.ID]
+	if stored.Active {
+		t.Error("The update left the user active")
 	}
-	if off.SessionEpoch != user.SessionEpoch+1 {
-		t.Errorf("Deactivating did not bump the epoch: want=%d, got=%d", user.SessionEpoch+1, off.SessionEpoch)
+	if stored.SessionEpoch != user.SessionEpoch+1 {
+		t.Errorf("Deactivating did not bump the epoch: want=%d, got=%d", user.SessionEpoch+1, stored.SessionEpoch)
 	}
 
-	if err := svc.SetActive(t.Context(), user.ID, true); err != nil {
-		t.Fatalf("SetActive(true) failed: %v", err)
+	on := asIs(stored)
+	on.Active = true
+	if err := svc.Update(t.Context(), user.ID, on); err != nil {
+		t.Fatalf("Update to active failed: %v", err)
 	}
-	on := users.rows[user.ID]
-	if on.SessionEpoch != off.SessionEpoch {
-		t.Errorf("Reactivating bumped the epoch: want=%d, got=%d", off.SessionEpoch, on.SessionEpoch)
+	back := users.rows[user.ID]
+	if back.SessionEpoch != stored.SessionEpoch {
+		t.Errorf("Reactivating bumped the epoch: want=%d, got=%d", stored.SessionEpoch, back.SessionEpoch)
 	}
 }
 
-func TestSetRoleKeepsTheSession(t *testing.T) {
+func TestUpdateRoleKeepsTheSession(t *testing.T) {
 	user := seedUser(t, "ada@example.com")
 	users := newFakeUsers(user)
 	svc := newTestService(t, users)
 
-	if err := svc.SetRole(t.Context(), user.ID, RootRole); err != nil {
-		t.Fatalf("SetRole failed: %v", err)
+	in := asIs(user)
+	in.Role = RootRole
+	if err := svc.Update(t.Context(), user.ID, in); err != nil {
+		t.Fatalf("Update failed: %v", err)
 	}
 
 	stored := users.rows[user.ID]
@@ -493,26 +521,213 @@ func TestSetRoleKeepsTheSession(t *testing.T) {
 		t.Errorf("Incorrect role: want=%q, got=%q", RootRole, stored.Role)
 	}
 	if stored.SessionEpoch != user.SessionEpoch {
-		t.Errorf("SetRole bumped the epoch: want=%d, got=%d", user.SessionEpoch, stored.SessionEpoch)
+		t.Errorf("The role change bumped the epoch: want=%d, got=%d", user.SessionEpoch, stored.SessionEpoch)
 	}
 }
 
-func TestSetRoleRefusesUnknownRole(t *testing.T) {
+func TestUpdateWritesTheName(t *testing.T) {
 	user := seedUser(t, "ada@example.com")
 	users := newFakeUsers(user)
 	svc := newTestService(t, users)
 
-	err := svc.SetRole(t.Context(), user.ID, "manager")
+	in := asIs(user)
+	in.FirstName, in.LastName = "  Grace  ", "  Hopper  "
+	if err := svc.Update(t.Context(), user.ID, in); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
 
-	errs, ok := validate.From(err)
-	if !ok {
-		t.Fatalf("Rejection is not FieldErrors: %v", err)
+	stored := users.rows[user.ID]
+	if stored.FirstName != "Grace" || stored.LastName != "Hopper" {
+		t.Errorf("Incorrect name: want=%q %q, got=%q %q", "Grace", "Hopper", stored.FirstName, stored.LastName)
 	}
-	if _, found := errs.Get(FieldRole); !found {
-		t.Errorf("Rejection does not name %q: %v", FieldRole, errs)
+}
+
+func TestUpdateChecksItsInput(t *testing.T) {
+	cases := map[string]struct {
+		change func(*UpdateParams)
+		field  string
+	}{
+		"no first name": {change: func(in *UpdateParams) { in.FirstName = "  " }, field: FieldFirstName},
+		"no last name":  {change: func(in *UpdateParams) { in.LastName = "" }, field: FieldLastName},
+		"unknown role":  {change: func(in *UpdateParams) { in.Role = "manager" }, field: FieldRole},
 	}
-	if users.updates != 0 {
-		t.Error("A refused role change still wrote the row")
+
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			user := seedUser(t, "ada@example.com")
+			users := newFakeUsers(user)
+			svc := newTestService(t, users)
+
+			in := asIs(user)
+			c.change(&in)
+			err := svc.Update(t.Context(), user.ID, in)
+
+			errs, ok := validate.From(err)
+			if !ok {
+				t.Fatalf("Rejection is not FieldErrors: %v", err)
+			}
+			if _, found := errs.Get(c.field); !found {
+				t.Errorf("Rejection does not name %q: %v", c.field, errs)
+			}
+			if users.updates != 0 {
+				t.Error("A refused edit still wrote the row")
+			}
+		})
+	}
+}
+
+func TestUpdateRefusesSelfLockout(t *testing.T) {
+	cases := map[string]func(*UpdateParams){
+		"own deactivation": func(in *UpdateParams) { in.Active = false },
+		"own root role":    func(in *UpdateParams) { in.Role = MemberRole },
+	}
+
+	for name, change := range cases {
+		t.Run(name, func(t *testing.T) {
+			user := seedUser(t, "ada@example.com")
+			user.Role = RootRole
+			users := newFakeUsers(user)
+			svc := newTestService(t, users)
+			ctx := NewContext(t.Context(), user.Identity())
+
+			in := asIs(user)
+			change(&in)
+
+			if err := svc.Update(ctx, user.ID, in); !errors.Is(err, ErrSelfLockout) {
+				t.Errorf("Update error = %v, want %v", err, ErrSelfLockout)
+			}
+			if users.updates != 0 {
+				t.Error("A refused edit still wrote the row")
+			}
+		})
+	}
+}
+
+func TestUpdateLetsAnotherRootDoTheSame(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	user.Role = RootRole
+	users := newFakeUsers(user)
+	svc := newTestService(t, users)
+
+	other := Identity{UserID: ids.MustParse("01912345-6789-7abc-def0-1234567890ff"), Role: RootRole}
+	ctx := NewContext(t.Context(), other)
+
+	in := asIs(user)
+	in.Active = false
+	if err := svc.Update(ctx, user.ID, in); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if users.rows[user.ID].Active {
+		t.Error("The user is still active")
+	}
+}
+
+func TestResetPasswordEndsEverySessionAndExpiresThePassword(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	users := newFakeUsers(user)
+	svc := newTestService(t, users)
+
+	passwd, err := svc.ResetPassword(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("ResetPassword failed: %v", err)
+	}
+
+	stored := users.rows[user.ID]
+	if !stored.PasswdExpired {
+		t.Error("The user may keep the password the reset handed out")
+	}
+	if stored.SessionEpoch != user.SessionEpoch+1 {
+		t.Errorf("The reset did not bump the epoch: want=%d, got=%d", user.SessionEpoch+1, stored.SessionEpoch)
+	}
+	if stored.PasswdHash == user.PasswdHash {
+		t.Error("The reset left the old hash in the row")
+	}
+
+	ok, _, err := password.Verify(stored.PasswdHash, passwd)
+	if err != nil || !ok {
+		t.Errorf("The password the reset returned does not verify: ok=%v, err=%v", ok, err)
+	}
+	if err := password.Check(FieldPasswd, passwd); err != nil {
+		t.Errorf("The generated password breaks the length policy: %v", err)
+	}
+}
+
+func TestInviteGeneratesADifferentPasswordEachTime(t *testing.T) {
+	users := newFakeUsers()
+	svc := newTestService(t, users)
+
+	in := NewUser{Email: "ada@example.com", FirstName: "Ada", LastName: "Lovelace", Role: MemberRole}
+	first, firstPasswd, err := svc.Invite(t.Context(), in)
+	if err != nil {
+		t.Fatalf("Invite failed: %v", err)
+	}
+	in.Email = "grace@example.com"
+	_, secondPasswd, err := svc.Invite(t.Context(), in)
+	if err != nil {
+		t.Fatalf("Invite failed: %v", err)
+	}
+
+	if firstPasswd == secondPasswd {
+		t.Error("Two invitations handed out the same password")
+	}
+	if !first.PasswdExpired {
+		t.Error("An invited user may keep the password they were given")
+	}
+
+	ok, _, err := password.Verify(users.rows[first.ID].PasswdHash, firstPasswd)
+	if err != nil || !ok {
+		t.Errorf("The password Invite returned does not verify: ok=%v, err=%v", ok, err)
+	}
+}
+
+func TestListReturnsEveryUserWithoutTheHash(t *testing.T) {
+	ada := seedUser(t, "ada@example.com")
+	grace := seedUser(t, "grace@example.com")
+	grace.ID = ids.MustParse("01912345-6789-7abc-def0-1234567890ff")
+	grace.Active = false
+	svc := newTestService(t, newFakeUsers(ada, grace))
+
+	accounts, err := svc.List(t.Context())
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	if len(accounts) != 2 {
+		t.Fatalf("List returned %d accounts, want 2", len(accounts))
+	}
+	if accounts[0].Email != ada.Email || accounts[1].Email != grace.Email {
+		t.Errorf("List is not ordered by email: %q then %q", accounts[0].Email, accounts[1].Email)
+	}
+	if accounts[1].Active {
+		t.Error("List reports a deactivated user as active")
+	}
+}
+
+func TestAccountReportsAMissingUser(t *testing.T) {
+	svc := newTestService(t, newFakeUsers())
+
+	_, err := svc.Account(t.Context(), ids.MustParse("01912345-6789-7abc-def0-1234567890ff"))
+	if !errors.Is(err, ErrNoUser) {
+		t.Errorf("Account error = %v, want %v", err, ErrNoUser)
+	}
+}
+
+func TestRoleAllowsRootEverywhere(t *testing.T) {
+	cases := []struct {
+		held, required Role
+		want           bool
+	}{
+		{RootRole, RootRole, true},
+		{RootRole, MemberRole, true},
+		{MemberRole, MemberRole, true},
+		{MemberRole, RootRole, false},
+		{"", RootRole, false},
+	}
+
+	for _, c := range cases {
+		if got := c.held.Allows(c.required); got != c.want {
+			t.Errorf("Role(%q).Allows(%q) = %v, want %v", c.held, c.required, got, c.want)
+		}
 	}
 }
 
@@ -664,12 +879,14 @@ func TestChangePasswordThatFailsRecordsNothing(t *testing.T) {
 	}
 }
 
-func TestSetRoleRecordsBothValues(t *testing.T) {
+func TestUpdateRecordsBothRoleValues(t *testing.T) {
 	user := seedUser(t, "ada@example.com")
 	svc, trail := newAuditedService(t, newFakeUsers(user))
 
-	if err := svc.SetRole(t.Context(), user.ID, RootRole); err != nil {
-		t.Fatalf("SetRole: %v", err)
+	in := asIs(user)
+	in.Role = RootRole
+	if err := svc.Update(t.Context(), user.ID, in); err != nil {
+		t.Fatalf("Update: %v", err)
 	}
 
 	got := trail.only(t)
@@ -682,20 +899,74 @@ func TestSetRoleRecordsBothValues(t *testing.T) {
 	}
 }
 
-func TestSetRoleToTheHeldRoleRecordsNothing(t *testing.T) {
+func TestUpdateThatChangesNothingRecordsNothing(t *testing.T) {
 	user := seedUser(t, "ada@example.com")
-	svc, trail := newAuditedService(t, newFakeUsers(user))
+	users := newFakeUsers(user)
+	svc, trail := newAuditedService(t, users)
 
-	if err := svc.SetRole(t.Context(), user.ID, user.Role); err != nil {
-		t.Fatalf("SetRole: %v", err)
+	if err := svc.Update(t.Context(), user.ID, asIs(user)); err != nil {
+		t.Fatalf("Update: %v", err)
 	}
 
+	if users.updates != 0 {
+		t.Error("An edit that changes nothing still wrote the row")
+	}
 	if len(trail.entries) != 0 {
 		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
 	}
 }
 
-func TestSetActiveRecordsEachDirection(t *testing.T) {
+func TestUpdateRecordsOneEntryPerNamePart(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	in := asIs(user)
+	in.FirstName, in.LastName = "Grace", "Hopper"
+	if err := svc.Update(t.Context(), user.ID, in); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+
+	if len(trail.entries) != 2 {
+		t.Fatalf("The trail holds %d entries, want 2: %+v", len(trail.entries), trail.entries)
+	}
+	for i, want := range []struct{ field, old, next string }{
+		{FieldFirstName, user.FirstName, "Grace"},
+		{FieldLastName, user.LastName, "Hopper"},
+	} {
+		got := trail.entries[i]
+		if got.Action != audit.ActionNameChanged || got.FieldKey != want.field {
+			t.Errorf("Entry %d is %s on %q, want %s on %q",
+				i, got.Action, got.FieldKey, audit.ActionNameChanged, want.field)
+		}
+		if got.Old != want.old || got.New != want.next {
+			t.Errorf("Entry %d moves %q to %q, want %q to %q", i, got.Old, got.New, want.old, want.next)
+		}
+	}
+}
+
+func TestResetPasswordRecordsTheResetAndNotThePassword(t *testing.T) {
+	user := seedUser(t, "ada@example.com")
+	svc, trail := newAuditedService(t, newFakeUsers(user))
+
+	passwd, err := svc.ResetPassword(t.Context(), user.ID)
+	if err != nil {
+		t.Fatalf("ResetPassword: %v", err)
+	}
+
+	got := trail.only(t)
+	if got.Action != audit.ActionPasswdReset || got.FieldKey != FieldPasswd {
+		t.Errorf("The entry is %s on %q, want %s on %q",
+			got.Action, got.FieldKey, audit.ActionPasswdReset, FieldPasswd)
+	}
+	if got.New != audit.Marker || got.Old != "" {
+		t.Errorf("The entry moves %q to %q, want %q to %q", got.Old, got.New, "", audit.Marker)
+	}
+	if got.Old == passwd || got.New == passwd {
+		t.Error("The trail holds the password")
+	}
+}
+
+func TestUpdateRecordsEachActiveDirection(t *testing.T) {
 	cases := map[string]struct {
 		held, want bool
 		action     string
@@ -710,8 +981,10 @@ func TestSetActiveRecordsEachDirection(t *testing.T) {
 			user.Active = c.held
 			svc, trail := newAuditedService(t, newFakeUsers(user))
 
-			if err := svc.SetActive(t.Context(), user.ID, c.want); err != nil {
-				t.Fatalf("SetActive: %v", err)
+			in := asIs(user)
+			in.Active = c.want
+			if err := svc.Update(t.Context(), user.ID, in); err != nil {
+				t.Fatalf("Update: %v", err)
 			}
 
 			got := trail.only(t)
@@ -726,27 +999,16 @@ func TestSetActiveRecordsEachDirection(t *testing.T) {
 	}
 }
 
-func TestSetActiveToTheHeldStateRecordsNothing(t *testing.T) {
-	user := seedUser(t, "ada@example.com")
-	svc, trail := newAuditedService(t, newFakeUsers(user))
-
-	if err := svc.SetActive(t.Context(), user.ID, user.Active); err != nil {
-		t.Fatalf("SetActive: %v", err)
-	}
-
-	if len(trail.entries) != 0 {
-		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
-	}
-}
-
 func TestWriteThatFailsRecordsNothing(t *testing.T) {
 	user := seedUser(t, "ada@example.com")
 	users := newFakeUsers(user)
 	svc, trail := newAuditedService(t, users)
 	users.failUpdateWith = errors.New("the store is down")
 
-	if err := svc.SetRole(t.Context(), user.ID, RootRole); err == nil {
-		t.Fatal("SetRole returned nil, want the store failure")
+	in := asIs(user)
+	in.Role = RootRole
+	if err := svc.Update(t.Context(), user.ID, in); err == nil {
+		t.Fatal("Update returned nil, want the store failure")
 	}
 
 	if len(trail.entries) != 0 {

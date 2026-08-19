@@ -14,7 +14,6 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
-	"github.com/paveltessman/pilam/internal/platform/password"
 	"github.com/paveltessman/pilam/internal/postgres"
 )
 
@@ -86,14 +85,11 @@ func userAdd(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 	)
 
 	// The plain password lives in this variable and in the report below.
-	passwd := password.Generate()
-
-	user, err := service.Create(ctx, auth.NewUser{
+	user, passwd, err := service.Invite(ctx, auth.NewUser{
 		Email:     *email,
 		FirstName: first,
 		LastName:  last,
 		Role:      role,
-		Passwd:    passwd,
 	})
 	if err != nil {
 		if errors.Is(err, auth.ErrEmailTaken) {

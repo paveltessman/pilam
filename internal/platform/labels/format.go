@@ -28,6 +28,16 @@ func Date(d time.Time) string {
 	return date.Format(d)
 }
 
+// Name renders the two name parts the user row holds as one display name.
+// A part that is missing is left out, and a row with neither reads as Empty.
+func Name(first, last string) string {
+	name := strings.TrimSpace(strings.TrimSpace(first) + " " + strings.TrimSpace(last))
+	if name == "" {
+		return Empty
+	}
+	return name
+}
+
 // Delta renders a signed count of days: "+12д", "-3д", "0д".
 func Delta(days int) string {
 	s := strconv.Itoa(days) + "д"

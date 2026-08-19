@@ -20,10 +20,12 @@ const EntityUser = "user"
 // The actions the trail names.
 const (
 	ActionCreated       = "created"
+	ActionNameChanged   = "name_changed"
 	ActionRoleChanged   = "role_changed"
 	ActionDeactivated   = "deactivated"
 	ActionReactivated   = "reactivated"
 	ActionPasswdChanged = "passwd_changed"
+	ActionPasswdReset   = "passwd_reset"
 )
 
 // Marker stands in for a value the trail must not hold, such as a password. The
