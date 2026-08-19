@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"strconv"
 	"testing"
 	"time"
 
@@ -22,8 +23,8 @@ func auditDB(t *testing.T) (*Audit, *Users, auth.User) {
 	return NewAudit(db), users, actor
 }
 
-// entry is one complete entry, with a value on both sides.
-func entry(actor, target ids.ID) audit.Entry {
+// sampleEntry is one complete entry, with a value on both sides.
+func sampleEntry(actor, target ids.ID) audit.Entry {
 	entry := audit.Entry{
 		ID:        gen.New(),
 		At:        time.Date(2026, 8, 18, 9, 30, 0, 0, time.UTC),
@@ -80,7 +81,7 @@ func stored(t *testing.T, db *DB) []audit.Entry {
 
 func TestAuditRoundTripsEveryField(t *testing.T) {
 	recorder, _, actor := auditDB(t)
-	want := entry(actor.ID, actor.ID)
+	want := sampleEntry(actor.ID, actor.ID)
 
 	if err := recorder.Record(t.Context(), want); err != nil {
 		t.Fatalf("Record: %v", err)
@@ -98,7 +99,7 @@ func TestAuditRoundTripsEveryField(t *testing.T) {
 func TestAuditStoresAbsentValueAsNull(t *testing.T) {
 	recorder, _, actor := auditDB(t)
 
-	created := entry(actor.ID, actor.ID)
+	created := sampleEntry(actor.ID, actor.ID)
 	created.Action = audit.ActionCreated
 	created.FieldKey = ""
 	created.Old = ""
@@ -121,8 +122,8 @@ func TestAuditStoresAbsentValueAsNull(t *testing.T) {
 func TestAuditRecordsEveryEntryItGets(t *testing.T) {
 	recorder, _, actor := auditDB(t)
 
-	first := entry(actor.ID, actor.ID)
-	second := entry(actor.ID, actor.ID)
+	first := sampleEntry(actor.ID, actor.ID)
+	second := sampleEntry(actor.ID, actor.ID)
 	second.Action = audit.ActionDeactivated
 
 	if err := recorder.Record(t.Context(), first, second); err != nil {
@@ -155,7 +156,7 @@ func TestAuditEntryRollsBackWithTheWriteItDescribes(t *testing.T) {
 		if err := users.Create(ctx, target); err != nil {
 			return err
 		}
-		created := entry(actor.ID, target.ID)
+		created := sampleEntry(actor.ID, target.ID)
 		created.Action = audit.ActionCreated
 		if err := recorder.Record(ctx, created); err != nil {
 			return err
@@ -183,7 +184,7 @@ func TestAuditEntryLandsWithTheWriteItDescribes(t *testing.T) {
 		if err := users.Create(ctx, target); err != nil {
 			return err
 		}
-		created := entry(actor.ID, target.ID)
+		created := sampleEntry(actor.ID, target.ID)
 		created.Action = audit.ActionCreated
 		return recorder.Record(ctx, created)
 	}
@@ -203,7 +204,7 @@ func TestAuditEntryLandsWithTheWriteItDescribes(t *testing.T) {
 
 func TestAuditRefusesActorWithNoRow(t *testing.T) {
 	recorder, _, actor := auditDB(t)
-	unknown := entry(gen.New(), actor.ID)
+	unknown := sampleEntry(gen.New(), actor.ID)
 
 	if err := recorder.Record(t.Context(), unknown); err == nil {
 		t.Fatal("Record accepted an actor with no user row")
@@ -221,4 +222,104 @@ func TestNewAuditRefusesNilDatabase(t *testing.T) {
 		}
 	}()
 	NewAudit(nil)
+}
+
+func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
+	recorder, users, actor := auditDB(t)
+	other := create(t, users, sample("grace@example.com"))
+
+	// Three entries about one user, and one about another.
+	var written []audit.Entry
+	for i, at := range []time.Time{
+		time.Date(2026, 8, 16, 9, 0, 0, 0, time.UTC),
+		time.Date(2026, 8, 17, 9, 0, 0, 0, time.UTC),
+		time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC),
+	} {
+		held := sampleEntry(actor.ID, actor.ID)
+		held.At = at
+		held.RequestID = "req-" + strconv.Itoa(i)
+		written = append(written, held)
+	}
+	elsewhere := sampleEntry(actor.ID, other.ID)
+
+	if err := recorder.Record(t.Context(), append(written, elsewhere)...); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)
+	if err != nil {
+		t.Fatalf("ByEntity: %v", err)
+	}
+	if len(held) != len(written) {
+		t.Fatalf("ByEntity returns %d entries, want %d", len(held), len(written))
+	}
+
+	// Newest first, and the entry about the other user stays out.
+	for i, got := range held {
+		want := written[len(written)-1-i]
+		got.At = got.At.UTC()
+		if got != want {
+			t.Errorf("entry %d = %+v, want %+v", i, got, want)
+		}
+	}
+}
+
+func TestAuditByEntityHoldsToTheLimit(t *testing.T) {
+	recorder, _, actor := auditDB(t)
+
+	newest := sampleEntry(actor.ID, actor.ID)
+	newest.At = newest.At.Add(time.Hour)
+	if err := recorder.Record(t.Context(), sampleEntry(actor.ID, actor.ID), newest); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 1)
+	if err != nil {
+		t.Fatalf("ByEntity: %v", err)
+	}
+	if len(held) != 1 {
+		t.Fatalf("ByEntity returns %d entries, want 1", len(held))
+	}
+	if got := held[0].At.UTC(); !got.Equal(newest.At) {
+		t.Errorf("the entry kept is stamped %s, want the newest, %s", got, newest.At)
+	}
+}
+
+// A NULL value column reads back as the empty string, which is the form the
+// domain states a missing side in.
+func TestAuditByEntityReadsAbsentValueAsEmpty(t *testing.T) {
+	recorder, _, actor := auditDB(t)
+
+	created := sampleEntry(actor.ID, actor.ID)
+	created.Action = audit.ActionCreated
+	created.FieldKey = ""
+	created.Old = ""
+	created.New = ""
+
+	if err := recorder.Record(t.Context(), created); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)
+	if err != nil {
+		t.Fatalf("ByEntity: %v", err)
+	}
+	if len(held) != 1 {
+		t.Fatalf("ByEntity returns %d entries, want 1", len(held))
+	}
+	if held[0].Old != "" || held[0].New != "" {
+		t.Errorf("the entry reads Old %q and New %q, want both empty", held[0].Old, held[0].New)
+	}
+}
+
+func TestAuditByEntityReadsNothingForAnEntityWithNoEntries(t *testing.T) {
+	recorder, _, actor := auditDB(t)
+
+	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)
+	if err != nil {
+		t.Fatalf("ByEntity: %v", err)
+	}
+	if len(held) != 0 {
+		t.Errorf("ByEntity returns %d entries, want none", len(held))
+	}
 }
