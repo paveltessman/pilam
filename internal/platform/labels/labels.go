@@ -62,6 +62,11 @@ const (
 	UsersRoleMember = "Сотрудник"
 	UsersRoleRoot   = "Администратор"
 
+	// The search box above the list, and what an empty result says.
+	UsersSearch     = "Поиск по имени, фамилии или почте"
+	UsersSearchHint = "Имя, фамилия или почта"
+	UsersNoMatch    = "Ничего не найдено"
+
 	// The rule that keeps the last root from locking the section.
 	UsersSelfLockout = "Нельзя снять доступ с самого себя. Это должен сделать другой администратор."
 )
