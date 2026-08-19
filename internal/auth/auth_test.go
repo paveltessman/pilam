@@ -24,6 +24,7 @@ type fakeUsers struct {
 	failWith       error
 	failUpdateWith error
 	updates        int
+	reads          int
 }
 
 func newFakeUsers(users ...User) *fakeUsers {
@@ -35,6 +36,7 @@ func newFakeUsers(users ...User) *fakeUsers {
 }
 
 func (f *fakeUsers) ByID(_ context.Context, id ids.ID) (User, error) {
+	f.reads++
 	if f.failWith != nil {
 		return User{}, f.failWith
 	}
@@ -1086,5 +1088,40 @@ func TestAuthenticateRecordsNothing(t *testing.T) {
 
 	if len(trail.entries) != 0 {
 		t.Errorf("The trail holds %d entries, want 0: %+v", len(trail.entries), trail.entries)
+	}
+}
+
+// The audit trail names one actor per entry, and the same actor over and over.
+// Actors reads each of them once, and leaves out an id that names nobody.
+func TestActorsReadsEveryIDOnce(t *testing.T) {
+	seed := seedUser(t, "ada@example.com")
+	users := newFakeUsers(seed)
+	service := newTestService(t, users)
+
+	gone := ids.MustParse("01912345-6789-7abc-def0-1234567890ff")
+	accounts, err := service.Actors(t.Context(), seed.ID, seed.ID, gone, ids.Nil)
+	if err != nil {
+		t.Fatalf("Actors: %v", err)
+	}
+
+	if got, want := len(accounts), 1; got != want {
+		t.Fatalf("Actors returns %d accounts, want %d: %+v", got, want, accounts)
+	}
+	if got := accounts[seed.ID].Email; got != seed.Email {
+		t.Errorf("the account holds the address %q, want %q", got, seed.Email)
+	}
+	if got, want := users.reads, 2; got != want {
+		t.Errorf("the store was read %d times, want %d: once per distinct id", got, want)
+	}
+}
+
+func TestActorsReportsAStoreFailure(t *testing.T) {
+	failure := errors.New("the store is not there")
+	users := newFakeUsers(seedUser(t, "ada@example.com"))
+	users.failWith = failure
+
+	actor := ids.MustParse("01912345-6789-7abc-def0-1234567890fe")
+	if _, err := newTestService(t, users).Actors(t.Context(), actor); !errors.Is(err, failure) {
+		t.Errorf("Actors: %v, want the failure of the store", err)
 	}
 }

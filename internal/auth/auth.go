@@ -513,6 +513,28 @@ func (s *Service) Account(ctx context.Context, userID ids.ID) (Account, error) {
 	return user.Account(), nil
 }
 
+// Actors returns the accounts the ids name, keyed by id.
+//
+// It reads every id once, whatever the number of times it is asked for.
+func (s *Service) Actors(ctx context.Context, actorIDs ...ids.ID) (map[ids.ID]Account, error) {
+	accounts := make(map[ids.ID]Account, len(actorIDs))
+	for _, id := range actorIDs {
+		if _, held := accounts[id]; held || id == ids.Nil {
+			continue
+		}
+
+		user, err := s.users.ByID(ctx, id)
+		if errors.Is(err, ErrNoUser) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("auth: loading user %s: %w", id, err)
+		}
+		accounts[id] = user.Account()
+	}
+	return accounts, nil
+}
+
 // userChange is one stated fact about a user row.
 func userChange(userID ids.ID, action, field, old, next string) audit.Change {
 	change := audit.Change{
