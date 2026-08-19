@@ -687,7 +687,7 @@ func TestListReturnsEveryUserWithoutTheHash(t *testing.T) {
 	grace.Active = false
 	svc := newTestService(t, newFakeUsers(ada, grace))
 
-	accounts, err := svc.List(t.Context())
+	accounts, err := svc.List(t.Context(), "")
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -700,6 +700,46 @@ func TestListReturnsEveryUserWithoutTheHash(t *testing.T) {
 	}
 	if accounts[1].Active {
 		t.Error("List reports a deactivated user as active")
+	}
+}
+
+func TestListSearchesAddressAndName(t *testing.T) {
+	ada := seedUser(t, "ada@example.com")
+	grace := seedUser(t, "grace@example.com")
+	grace.ID = ids.MustParse("01912345-6789-7abc-def0-1234567890ff")
+	grace.FirstName, grace.LastName = "Grace", "Hopper"
+	svc := newTestService(t, newFakeUsers(ada, grace))
+
+	both := []string{ada.Email, grace.Email}
+	cases := []struct {
+		query string
+		want  []string
+	}{
+		{"", both},
+		{"   ", both},
+		{"example.com", both},
+		{"ada", []string{ada.Email}},
+		{"ADA", []string{ada.Email}},
+		{"Lovelace", []string{ada.Email}},
+		{"ada lov", []string{ada.Email}},
+		{"hopper", []string{grace.Email}},
+		{"ada hopper", nil},
+		{"zzz", nil},
+	}
+
+	for _, c := range cases {
+		accounts, err := svc.List(t.Context(), c.query)
+		if err != nil {
+			t.Fatalf("List(%q) failed: %v", c.query, err)
+		}
+
+		got := make([]string, len(accounts))
+		for i, account := range accounts {
+			got[i] = account.Email
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("List(%q) returned %v, want %v", c.query, got, c.want)
+		}
 	}
 }
 

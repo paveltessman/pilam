@@ -43,6 +43,20 @@ func call(t *testing.T, deps Deps, r route, form url.Values, session *http.Cooki
 	return getAs(t, deps, r.path, session)
 }
 
+// getAsHTMX asks as the search box does: the same URL, with the header htmx
+// puts on a request it makes itself.
+func getAsHTMX(t *testing.T, deps Deps, path string, session *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+
+	r := httptest.NewRequest(http.MethodGet, path, nil)
+	r.Header.Set("HX-Request", "true")
+	r.AddCookie(session)
+
+	rec := httptest.NewRecorder()
+	NewRouter(deps).ServeHTTP(rec, r)
+	return rec
+}
+
 // userForm is what the create and the edit screen post.
 func userForm(email, first, last string, role auth.Role, active bool) url.Values {
 	form := url.Values{
@@ -129,6 +143,92 @@ func TestUsersListShowsEveryUser(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("the list does not contain %q", want)
 		}
+	}
+}
+
+func TestUsersSearchKeepsRowsThatMatch(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	cases := []struct {
+		query string
+		want  []string
+		gone  []string
+	}{
+		{"lovelace", []string{testEmail}, []string{expiredEmail, rootEmail}},
+		{"GRACE", []string{expiredEmail}, []string{testEmail, rootEmail}},
+		{"root@", []string{rootEmail}, []string{testEmail, expiredEmail}},
+		{"example.com", []string{testEmail, expiredEmail, rootEmail}, nil},
+		{"", []string{testEmail, expiredEmail, rootEmail}, nil},
+	}
+
+	for _, c := range cases {
+		body := getAs(t, d, usersPath+"?q="+url.QueryEscape(c.query), cookie).Body.String()
+		for _, want := range c.want {
+			if !strings.Contains(body, want) {
+				t.Errorf("the search for %q drops %q", c.query, want)
+			}
+		}
+		for _, gone := range c.gone {
+			if strings.Contains(body, gone) {
+				t.Errorf("the search for %q keeps %q", c.query, gone)
+			}
+		}
+	}
+}
+
+func TestUsersSearchCarriesQueryBackToTheBox(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	body := getAs(t, d, usersPath+"?q=lovelace", cookie).Body.String()
+	if !strings.Contains(body, `value="lovelace"`) {
+		t.Error("the search box comes back empty after a search")
+	}
+}
+
+func TestUsersSearchReportsThatNobodyMatches(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	body := getAs(t, d, usersPath+"?q=nobody", cookie).Body.String()
+	if !strings.Contains(body, labels.UsersNoMatch) {
+		t.Error("a search that matches nobody does not say so")
+	}
+	if strings.Contains(body, labels.UsersEmpty) {
+		t.Error("a search that matches nobody claims the section holds no users")
+	}
+}
+
+func TestUsersSearchAnswersHTMXWithTableAlone(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	body := getAsHTMX(t, d, usersPath+"?q=lovelace", cookie).Body.String()
+	if !strings.Contains(body, testEmail) {
+		t.Fatalf("the fragment does not hold the matching row: %s", body)
+	}
+	for _, chrome := range []string{"<!doctype html>", "<header", "<main", labels.NavLogOut} {
+		if strings.Contains(strings.ToLower(body), strings.ToLower(chrome)) {
+			t.Errorf("the fragment repeats the chrome: %q", chrome)
+		}
+	}
+}
+
+func TestUsersListStillWholePageForBoostedRequest(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	r := httptest.NewRequest(http.MethodGet, usersPath, nil)
+	r.Header.Set("HX-Request", "true")
+	r.Header.Set("HX-History-Restore-Request", "true")
+	r.AddCookie(cookie)
+
+	rec := httptest.NewRecorder()
+	NewRouter(d).ServeHTTP(rec, r)
+
+	if !strings.Contains(rec.Body.String(), "<main") {
+		t.Error("a history restore gets a fragment rather than the page")
 	}
 }
 

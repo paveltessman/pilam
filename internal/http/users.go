@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/views"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/labels"
@@ -19,19 +20,29 @@ const (
 	userPassPath = userPath + "/password"
 )
 
-// showUsers lists every user, active and inactive.
+// showUsers lists the users, active and inactive. The "q" parameter searches
+// the address, the first name and the last name. An empty "q" lists everybody.
+//
+// htmx asks for the same URL as the user types. Such a request gets the table
+// alone, because the rest of the screen already stands in the browser.
 func showUsers(authSvc *auth.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		query := r.URL.Query().Get(views.FieldUserSearch)
 
-		accounts, err := authSvc.List(ctx)
+		accounts, err := authSvc.List(ctx, query)
 		if err != nil {
 			logging.FromContext(ctx).Error("listing users failed", "err", err)
 			writeServerError(w)
 			return
 		}
 
-		render(w, r, http.StatusOK, views.Users(views.UsersPage{Chrome: chrome(ctx), Users: accounts}))
+		page := views.UsersPage{Chrome: chrome(ctx), Users: accounts, Query: query}
+		if middleware.IsFragment(ctx) {
+			render(w, r, http.StatusOK, views.UsersResults(page))
+			return
+		}
+		render(w, r, http.StatusOK, views.Users(page))
 	}
 	return handler
 }
