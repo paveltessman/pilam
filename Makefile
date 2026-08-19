@@ -152,9 +152,12 @@ migration: ## Scaffold a migration: make migration name=add_styles
 	@# linear history the ordering is easier to read and the file names shorter.
 	go tool goose -dir db/migrations -s create $(name) sql
 
+SEED_FLAGS := $(if $(users),--users $(users)) $(if $(domain),--domain $(domain)) $(if $(passwd),--passwd '$(passwd)')
+
 .PHONY: seed
-seed: ## Load the demo dataset
-	go run ./cmd/pilam seed
+seed: ## Load the demo dataset: make seed [users=5] [domain=b.example] [passwd=...]
+	@# The command prints the one password every seeded user logs in with.
+	go run ./cmd/pilam seed $(SEED_FLAGS)
 
 USER_USAGE := usage: make user email=a@b.c name="Ada Lovelace" [root=1]
 
