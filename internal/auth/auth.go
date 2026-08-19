@@ -136,7 +136,7 @@ type Users interface {
 	ByID(ctx context.Context, id ids.ID) (User, error)
 	ByEmail(ctx context.Context, email string) (User, error)
 
-	// List returns every user, active and inactive, ordered by email.
+	// List returns every user, active and inactive, ordered by name.
 	List(ctx context.Context) ([]User, error)
 
 	Create(ctx context.Context, user User) error
@@ -460,7 +460,7 @@ func (s *Service) ResetPassword(ctx context.Context, userID ids.ID) (string, err
 	return plain, nil
 }
 
-// List returns the users the section shows, ordered by email. It keeps the
+// List returns the users the section shows, ordered by name. It keeps the
 // users that match query, and every user when query is empty.
 func (s *Service) List(ctx context.Context, query string) ([]Account, error) {
 	users, err := s.users.List(ctx)
@@ -511,6 +511,28 @@ func (s *Service) Account(ctx context.Context, userID ids.ID) (Account, error) {
 		return Account{}, fmt.Errorf("auth: loading user %s: %w", userID, err)
 	}
 	return user.Account(), nil
+}
+
+// Actors returns the accounts the ids name, keyed by id.
+//
+// It reads every id once, whatever the number of times it is asked for.
+func (s *Service) Actors(ctx context.Context, actorIDs ...ids.ID) (map[ids.ID]Account, error) {
+	accounts := make(map[ids.ID]Account, len(actorIDs))
+	for _, id := range actorIDs {
+		if _, held := accounts[id]; held || id == ids.Nil {
+			continue
+		}
+
+		user, err := s.users.ByID(ctx, id)
+		if errors.Is(err, ErrNoUser) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("auth: loading user %s: %w", id, err)
+		}
+		accounts[id] = user.Account()
+	}
+	return accounts, nil
 }
 
 // userChange is one stated fact about a user row.

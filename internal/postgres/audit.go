@@ -5,10 +5,14 @@ import (
 	"fmt"
 
 	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/postgres/internal/sqlc"
 )
 
-var _ audit.Recorder = (*Audit)(nil)
+var (
+	_ audit.Recorder = (*Audit)(nil)
+	_ audit.Reader   = (*Audit)(nil)
+)
 
 // Audit stores the audit trail.
 type Audit struct {
@@ -46,6 +50,44 @@ func (a *Audit) Record(ctx context.Context, entries ...audit.Entry) error {
 	return a.db.InTx(ctx, write)
 }
 
+// ByEntity returns the entries of one entity, newest first, at most limit of
+// them. Index over (entity, entity_id, at DESC).
+func (a *Audit) ByEntity(ctx context.Context, entity string, entityID ids.ID, limit int) ([]audit.Entry, error) {
+	params := sqlc.ListAuditEntriesParams{
+		Entity:   entity,
+		EntityID: entityID,
+		RowLimit: int32(limit),
+	}
+
+	rows, err := a.db.queries(ctx).ListAuditEntries(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: listing the trail of %s %s: %w", entity, entityID, err)
+	}
+
+	entries := make([]audit.Entry, len(rows))
+	for i, row := range rows {
+		entries[i] = entry(row)
+	}
+	return entries, nil
+}
+
+// entry maps a row onto the domain type. A NULL value column reads as the empty
+// string.
+func entry(row sqlc.AuditEntry) audit.Entry {
+	return audit.Entry{
+		ID:        row.ID,
+		At:        row.At,
+		ActorID:   row.ActorID,
+		Entity:    row.Entity,
+		EntityID:  row.EntityID,
+		Action:    row.Action,
+		FieldKey:  row.FieldKey,
+		Old:       text(row.OldValue),
+		New:       text(row.NewValue),
+		RequestID: row.RequestID,
+	}
+}
+
 func params(entry audit.Entry) sqlc.CreateAuditEntryParams {
 	params := sqlc.CreateAuditEntryParams{
 		ID:        entry.ID,
@@ -69,4 +111,12 @@ func value(v string) *string {
 		return nil
 	}
 	return &v
+}
+
+// text is value the other way round: a NULL column reads as the empty string.
+func text(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

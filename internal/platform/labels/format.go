@@ -14,6 +14,9 @@ const (
 
 	// The thousands separator and the space before a unit.
 	nbsp = "\u00a0"
+
+	// The form a moment reads in: DD.MM.YYYY HH:MM.
+	displayTime = "02.01.2006 15:04"
 )
 
 var currencySymbols = map[string]string{
@@ -26,6 +29,14 @@ func Date(d time.Time) string {
 		return Empty
 	}
 	return date.Format(d)
+}
+
+// DateTime renders a moment: the day, and the hour and minute of it.
+func DateTime(t time.Time) string {
+	if t.IsZero() {
+		return Empty
+	}
+	return t.Format(displayTime)
 }
 
 // Name renders the two name parts the user row holds as one display name.

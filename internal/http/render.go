@@ -24,6 +24,20 @@ func render(w http.ResponseWriter, r *http.Request, status int, component templ.
 	}
 }
 
+// savedQuery marks a screen the browser reaches after a write the server
+// accepted. The screen reads the mark and reports that the changes are saved.
+const savedQuery = "saved"
+
+// redirectSaved sends the browser to path with the saved mark on it.
+func redirectSaved(w http.ResponseWriter, r *http.Request, path string) {
+	http.Redirect(w, r, path+"?"+savedQuery+"=1", http.StatusSeeOther)
+}
+
+// isSaved reports whether the request carries the mark redirectSaved sets.
+func isSaved(r *http.Request) bool {
+	return r.URL.Query().Get(savedQuery) != ""
+}
+
 func writeServerError(w http.ResponseWriter) {
 	http.Error(w, labels.ErrorUnexpected, http.StatusInternalServerError)
 }

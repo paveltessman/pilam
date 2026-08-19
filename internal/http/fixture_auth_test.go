@@ -39,6 +39,12 @@ var (
 // store does not keep a clock, so the rows state it.
 var seedChange = time.Date(2026, 8, 17, 12, 0, 0, 0, time.UTC)
 
+// testNow is the instant the fixed clock stands at. The trail stamps its
+// entries with it, and the screens render them in the zone it carries.
+var testNow = time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC)
+
+func testClock() clock.Clock { return clock.Fixed(testNow, time.UTC) }
+
 // Hashing costs about as much as the rest of a test, so each password is
 // hashed once for the whole package.
 var (
@@ -178,6 +184,27 @@ func (r *recorded) Record(_ context.Context, entries ...audit.Entry) error {
 	return nil
 }
 
+// ByEntity is the read side: the entries of one entity, newest first, at most
+// limit of them. The clock is fixed, so entries stamped alike come back in the
+// reverse of the order they were recorded in.
+func (r *recorded) ByEntity(_ context.Context, entity string, entityID ids.ID, limit int) ([]audit.Entry, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var held []audit.Entry
+	for _, entry := range r.entries {
+		if entry.Entity == entity && entry.EntityID == entityID {
+			held = append(held, entry)
+		}
+	}
+
+	slices.Reverse(held)
+	if len(held) > limit {
+		held = held[:limit]
+	}
+	return held, nil
+}
+
 // actions is what the trail holds, in the order it was recorded.
 func (r *recorded) actions() []string {
 	r.mu.Lock()
@@ -203,17 +230,11 @@ func (r *recorded) holds(secret string) bool {
 	return false
 }
 
-func authService(t *testing.T) *auth.Service {
-	t.Helper()
-	service, _ := auditedAuthService(t)
-	return service
-}
-
 // auditedAuthService returns the service, and the trail it records to.
 func auditedAuthService(t *testing.T) (*auth.Service, *recorded) {
 	t.Helper()
 
-	clk := clock.Fixed(time.Date(2026, 8, 18, 9, 0, 0, 0, time.UTC), time.UTC)
+	clk := testClock()
 	gen := ids.NewGenerator()
 	trail := &recorded{}
 	service := auth.NewService(newFakeUsers(), directAtomic{}, auth.NewThrottle(clk), gen,
@@ -221,13 +242,15 @@ func auditedAuthService(t *testing.T) (*auth.Service, *recorded) {
 	return service, trail
 }
 
-// auditedDeps is deps with a trail the test reads back.
+// auditedDeps is deps with a trail the test reads back. The service records to
+// it, and the screens read the same trail back through the log.
 func auditedDeps(t *testing.T) (Deps, *recorded) {
 	t.Helper()
 
-	d := deps(t)
 	service, trail := auditedAuthService(t)
+	d := baseDeps(t)
 	d.AuthSvc = service
+	d.AuditLog = audit.NewLog(trail, testClock())
 	return d, trail
 }
 

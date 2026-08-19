@@ -339,11 +339,19 @@ func TestEditUserWritesNameAndRole(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
-	if got := rec.Header().Get("Location"); got != usersPath {
-		t.Errorf("Location = %q, want %q", got, usersPath)
+	if got, want := rec.Header().Get("Location"), path+"?saved=1"; got != want {
+		t.Errorf("Location = %q, want %q", got, want)
+	}
+
+	// The card the browser lands on reports the save. A plain visit does not.
+	if saved := getAs(t, d, path+"?saved=1", cookie).Body.String(); !strings.Contains(saved, labels.UsersSaved) {
+		t.Error("the card after the save does not report it")
 	}
 
 	body := getAs(t, d, path, cookie).Body.String()
+	if strings.Contains(body, labels.UsersSaved) {
+		t.Error("a plain visit to the card reports a save")
+	}
 	for _, want := range []string{`value="Augusta"`, `value="King"`, `value="root" selected`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the form does not carry %q", want)
@@ -478,5 +486,97 @@ func TestCreateScreenNamesFieldsThatServiceRejects(t *testing.T) {
 		if posted != rejected {
 			t.Errorf("the view posts %q, the service rejects %q", posted, rejected)
 		}
+	}
+}
+
+// The card of one user carries what the trail recorded about that user: when,
+// who, and what changed.
+func TestUserCardShowsTheAuditTrail(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+	card := usersPath + "/" + testUserID.String()
+
+	// Nothing is recorded about the seeded user yet.
+	if body := getAs(t, d, card, cookie).Body.String(); !strings.Contains(body, labels.UsersAuditEmpty) {
+		t.Error("the card of a user with no history does not say the history is empty")
+	}
+
+	// A rename and a role change, both by the root.
+	edit := userForm(testEmail, "Ada", "Byron", auth.RootRole, true)
+	if rec := postAs(t, d, card, edit, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	body := getAs(t, d, card, cookie).Body.String()
+	name := labels.UsersAuditLastName + ": Lovelace → Byron"
+	role := labels.UsersAuditRole + ": " + labels.UsersRoleMember + " → " + labels.UsersRoleRoot
+
+	for _, want := range []string{
+		labels.UsersAuditTitle,
+		labels.DateTime(testNow),
+		labels.Name("Barbara", "Liskov"),
+		name,
+		role,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the trail on the card does not hold %q", want)
+		}
+	}
+
+	// Newest first: the role change was recorded after the rename.
+	if strings.Index(body, role) > strings.Index(body, name) {
+		t.Error("the trail does not show the newest change first")
+	}
+}
+
+// A deactivation and a password reset read as the action alone. The flag and
+// the marker the entries carry say nothing the action does not.
+func TestUserCardReadsTheTrailWithoutTheStoredValues(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+	card := usersPath + "/" + testUserID.String()
+
+	reset := postAs(t, d, card+"/password", nil, cookie)
+	if reset.Code != http.StatusOK {
+		t.Fatalf("reset status = %d, want %d", reset.Code, http.StatusOK)
+	}
+	passwd := passwordOf(t, reset)
+
+	off := userForm(testEmail, "Ada", "Lovelace", auth.MemberRole, false)
+	if rec := postAs(t, d, card, off, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	body := getAs(t, d, card, cookie).Body.String()
+	for _, want := range []string{labels.UsersAuditOff, labels.UsersAuditReset} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the trail on the card does not hold %q", want)
+		}
+	}
+	for _, unwanted := range []string{passwd, audit.Marker, "true", "false"} {
+		if strings.Contains(body, ": "+unwanted) {
+			t.Errorf("the trail on the card reads out the stored value %q", unwanted)
+		}
+	}
+}
+
+// A refused edit comes back with the trail still under the form.
+func TestRefusedEditKeepsTheTrailOnTheCard(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+	card := usersPath + "/" + testUserID.String()
+
+	named := userForm(testEmail, "Ada", "Byron", auth.MemberRole, true)
+	if rec := postAs(t, d, card, named, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit status = %d, want %d", rec.Code, http.StatusSeeOther)
+	}
+
+	empty := userForm(testEmail, "", "Byron", auth.MemberRole, true)
+	rec := postAs(t, d, card, empty, cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+	if !strings.Contains(rec.Body.String(), labels.UsersAuditLastName+": Lovelace → Byron") {
+		t.Error("the refused edit comes back without the trail")
 	}
 }

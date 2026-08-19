@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/platform/ids"
 )
 
 // employee is one line of the roster.
@@ -23,9 +24,15 @@ type employee struct {
 
 func (e employee) email(domain string) string { return e.local + "@" + domain }
 
+// rootAt is where the roster holds the root the whole dataset is created by.
+// The seed writes that root first, so every user after them has an actor the
+// trail can name.
+const rootAt = 0
+
 // roster is the demo company.
 var roster = []employee{
-	// The two accounts that reach the user screens.
+	// The two accounts that reach the user screens. The first of them is the
+	// actor of the whole dataset, and rootAt points at them.
 	{"Марина", "Ковалёва", "marina.kovaleva", auth.RootRole, true},
 	{"Артём", "Соколов", "artem.sokolov", auth.RootRole, true},
 
@@ -78,6 +85,11 @@ type UsersReport struct {
 }
 
 // seedUsers writes the employees, and reports what it wrote.
+//
+// The root at rootAt goes in first and creates themselves, because nobody is
+// logged in when the seed runs. From there on the context names that root, so
+// the trail reads the way it reads in a real company: one administrator opened
+// every account.
 func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersReport, error) {
 	people := roster
 	if opts.Users > 0 {
@@ -85,7 +97,7 @@ func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersR
 	}
 
 	report := UsersReport{Passwd: opts.Passwd}
-	for _, person := range people {
+	for i, person := range people {
 		email := person.email(opts.Domain)
 
 		user, err := authSvc.Create(ctx, auth.NewUser{
@@ -98,27 +110,70 @@ func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersR
 		switch {
 		case errors.Is(err, auth.ErrEmailTaken), errors.Is(err, auth.ErrIDTaken):
 			report.Skipped++
-			continue
+
 		case err != nil:
 			return report, fmt.Errorf("seed: creating user %s: %w", email, err)
+
+		default:
+			// A user is born active, so the two who left are deactivated after
+			// the fact. The trail then reads the way it reads for a real leaver.
+			if !person.active {
+				err := authSvc.Update(ctx, user.ID, auth.UpdateParams{
+					FirstName: user.FirstName,
+					LastName:  user.LastName,
+					Role:      user.Role,
+					Active:    false,
+				})
+				if err != nil {
+					return report, fmt.Errorf("seed: deactivating user %s: %w", email, err)
+				}
+			}
+
+			report.Created++
 		}
 
-		// A user is born active, so the two who left are deactivated after the
-		// fact. The trail then reads the way it reads for a real leaver.
-		if !person.active {
-			err := authSvc.Update(ctx, user.ID, auth.UpdateParams{
-				FirstName: user.FirstName,
-				LastName:  user.LastName,
-				Role:      user.Role,
-				Active:    false,
-			})
+		if i == rootAt {
+			ctx, err = runAsRoot(ctx, authSvc, user, email)
 			if err != nil {
-				return report, fmt.Errorf("seed: deactivating user %s: %w", email, err)
+				return report, err
 			}
 		}
-
-		report.Created++
 	}
 
 	return report, nil
+}
+
+// runAsRoot returns a context that names the demo root as the actor of every
+// write made under it.
+//
+// written is the row this run wrote. It is the zero user where an earlier run
+// already held the address, and the search then finds the root that run wrote.
+// Both runs name one actor this way.
+//
+// A store that holds neither leaves the context as it stands. Each user then
+// creates themselves, which is what the trail held before the root was there.
+func runAsRoot(ctx context.Context, authSvc *auth.Service, written auth.User, email string) (context.Context, error) {
+	if written.ID != ids.Nil {
+		return auth.NewContext(ctx, written.Identity()), nil
+	}
+
+	accounts, err := authSvc.List(ctx, email)
+	if err != nil {
+		return ctx, fmt.Errorf("seed: looking up the root %s: %w", email, err)
+	}
+
+	for _, account := range accounts {
+		if account.Email != email {
+			continue
+		}
+		identity := auth.Identity{
+			UserID:    account.ID,
+			Email:     account.Email,
+			FirstName: account.FirstName,
+			LastName:  account.LastName,
+			Role:      account.Role,
+		}
+		return auth.NewContext(ctx, identity), nil
+	}
+	return ctx, nil
 }

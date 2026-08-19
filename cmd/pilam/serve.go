@@ -45,7 +45,9 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 	clk := clock.New(cfg.Timezone)
 	sessionMgr := session.New(cfg.Session.Secret, cfg.Session.TTL, clk)
 	idGen := ids.NewGenerator()
-	trail := audit.NewTrail(postgres.NewAudit(db), clk, idGen)
+	trailStore := postgres.NewAudit(db)
+	trail := audit.NewTrail(trailStore, clk, idGen)
+	auditLog := audit.NewLog(trailStore, clk)
 	authSvc := auth.NewService(postgres.NewUsers(db), db, auth.NewThrottle(clk), idGen, trail)
 
 	srv := &http.Server{
@@ -57,6 +59,7 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 			Media:      mediaStore,
 			SessionMgr: sessionMgr,
 			AuthSvc:    authSvc,
+			AuditLog:   auditLog,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}

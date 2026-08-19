@@ -44,6 +44,10 @@ func TestRosterIsWellFormed(t *testing.T) {
 	if roots == 0 {
 		t.Error("Nobody on the roster reaches the user screens")
 	}
+	if roster[rootAt].role != auth.RootRole {
+		t.Errorf("The roster opens with the %q %s, want a root: the dataset is created by them",
+			roster[rootAt].role, roster[rootAt].local)
+	}
 	if inactive == 0 {
 		t.Error("Nobody on the roster is deactivated, so the screen never shows that state")
 	}
@@ -207,4 +211,63 @@ func TestRunRefusesOptionsItCantWorkFrom(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The whole demo dataset is created by one administrator, the root the roster
+// opens with. That root is the only user who creates themselves.
+func TestSeededUsersAreCreatedByTheRoot(t *testing.T) {
+	svc, users, recorder := newTestService(t)
+
+	run(t, svc, Options{Users: short})
+	root := storedUser(t, users, roster[rootAt].email(DefaultDomain))
+
+	for _, entry := range recorder.entries {
+		actor, target := entry.ActorID, entry.EntityID
+		if target == root.ID {
+			if actor != root.ID {
+				t.Errorf("The root is created by %s, want themselves", actor)
+			}
+			continue
+		}
+		if actor != root.ID {
+			t.Errorf("User %s is created by %s, want the root %s", target, actor, root.ID)
+		}
+	}
+}
+
+// A later run writes the employees the roster grew by. The root of the first
+// run is still the actor, so the whole trail names one administrator.
+func TestALaterRunNamesTheRootOfTheFirst(t *testing.T) {
+	svc, users, recorder := newTestService(t)
+
+	run(t, svc, Options{Users: short})
+	root := storedUser(t, users, roster[rootAt].email(DefaultDomain))
+	written := len(recorder.entries)
+
+	report := run(t, svc, Options{Users: short + 2})
+	if report.Users.Created != 2 {
+		t.Fatalf("The second run wrote %d employees, want 2", report.Users.Created)
+	}
+
+	later := recorder.entries[written:]
+	if len(later) == 0 {
+		t.Fatal("The second run left no entry behind")
+	}
+	for _, entry := range later {
+		if entry.ActorID != root.ID {
+			t.Errorf("User %s is created by %s, want the root %s of the first run",
+				entry.EntityID, entry.ActorID, root.ID)
+		}
+	}
+}
+
+// storedUser returns the row the store holds under that address.
+func storedUser(t *testing.T, users *fakeUsers, email string) auth.User {
+	t.Helper()
+
+	user, err := users.ByEmail(t.Context(), email)
+	if err != nil {
+		t.Fatalf("The store holds no user at %s: %v", email, err)
+	}
+	return user
 }

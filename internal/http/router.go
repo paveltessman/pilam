@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/static"
@@ -31,6 +32,7 @@ type Deps struct {
 	Media      media.Store
 	SessionMgr *session.Manager
 	AuthSvc    *auth.Service
+	AuditLog   *audit.Log
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -47,6 +49,8 @@ func NewRouter(deps Deps) http.Handler {
 		panic("http: nil session manager")
 	case deps.AuthSvc == nil:
 		panic("http: nil auth service")
+	case deps.AuditLog == nil:
+		panic("http: nil audit log")
 	}
 
 	mux := http.NewServeMux()
@@ -77,8 +81,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+usersPath, root(showUsers(deps.AuthSvc)))
 	mux.Handle("POST "+usersPath, root(createUser(deps.AuthSvc)))
 	mux.Handle("GET "+userNewPath, root(showNewUser()))
-	mux.Handle("GET "+userPath, root(showUser(deps.AuthSvc)))
-	mux.Handle("POST "+userPath, root(saveUser(deps.AuthSvc)))
+	mux.Handle("GET "+userPath, root(showUser(deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+userPath, root(saveUser(deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+userPassPath, root(resetUserPasswd(deps.AuthSvc)))
 
 	// The order of middleware chain:

@@ -48,8 +48,8 @@ func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 
 	idGen := ids.NewDeterministic(seed.IDSeed)
 
-	// Nobody is logged in here, so the trail names each new user as the actor of
-	// their own creation.
+	// Nobody is logged in here. The seed writes one root first, and names that
+	// root as the actor of every user after them.
 	authSvc := auth.NewService(
 		postgres.NewUsers(db),
 		db,

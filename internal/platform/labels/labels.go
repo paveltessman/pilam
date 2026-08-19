@@ -67,8 +67,33 @@ const (
 	UsersSearchHint = "Имя, фамилия или почта"
 	UsersNoMatch    = "Ничего не найдено"
 
+	// What the card reports after it saves the changes.
+	UsersSaved = "Изменения сохранены."
+
 	// The rule that keeps the last root from locking the section.
 	UsersSelfLockout = "Нельзя снять доступ с самого себя. Это должен сделать другой администратор."
+)
+
+// The audit trail on the user card: the heading, the columns, and the words
+// the recorded actions read as.
+const (
+	UsersAuditTitle = "История изменений"
+	UsersAuditEmpty = "Изменений пока нет."
+	UsersAuditWhen  = "Когда"
+	UsersAuditWho   = "Кто"
+	UsersAuditWhat  = "Что изменилось"
+
+	UsersAuditCreated   = "Пользователь создан"
+	UsersAuditFirstName = "Имя изменено"
+	UsersAuditLastName  = "Фамилия изменена"
+	UsersAuditRole      = "Роль изменена"
+	UsersAuditOff       = "Доступ отключён"
+	UsersAuditOn        = "Доступ включён"
+	UsersAuditPasswd    = "Пароль изменён"
+	UsersAuditReset     = "Пароль сброшен"
+
+	// An action recorded and not named above.
+	UsersAuditOther = "Изменение"
 )
 
 // The screen that shows a first password.
