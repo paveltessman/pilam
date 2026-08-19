@@ -26,6 +26,30 @@ func TestDate(t *testing.T) {
 	}
 }
 
+func TestDateTime(t *testing.T) {
+	moscow, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		t.Fatalf("loading the zone: %v", err)
+	}
+
+	testData := map[string]struct {
+		in   time.Time
+		want string
+	}{
+		"display form": {time.Date(2027, time.February, 9, 14, 5, 0, 0, time.UTC), "09.02.2027 14:05"},
+		"zero padded":  {time.Date(2027, time.February, 9, 4, 5, 0, 0, time.UTC), "09.02.2027 04:05"},
+		"in its zone":  {time.Date(2027, time.February, 9, 23, 30, 0, 0, moscow), "09.02.2027 23:30"},
+		"unset":        {time.Time{}, Empty},
+	}
+	for name, tc := range testData {
+		t.Run(name, func(t *testing.T) {
+			if got := DateTime(tc.in); got != tc.want {
+				t.Errorf("DateTime(%s) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestName(t *testing.T) {
 	testData := map[string]struct {
 		first, last string
