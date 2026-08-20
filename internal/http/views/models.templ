@@ -1,0 +1,369 @@
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/http/views/ui/button"
+	"github.com/paveltessman/pilam/internal/http/views/ui/input"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+	"github.com/paveltessman/pilam/internal/platform/validate"
+)
+
+const (
+	FieldModelArticle = "article"
+	FieldModelSeason  = "season_id"
+	FieldModelDrop    = "drop_id"
+	FieldModelActive  = "active"
+	FieldModelPhoto   = "photo"
+	FieldModelOrder   = "photo_order"
+)
+
+// ModelsPath is where the section is mounted.
+const ModelsPath = "/models"
+
+// modelsResults is the element the filters swap. The list renders it, and a
+// filter request answers with what goes inside it.
+const modelsResults = "models-results"
+
+// modelDropField is the element the season control of the create screen swaps.
+// Choosing a season narrows the drops to that season.
+const modelDropField = "model-drop-field"
+
+// The three values the state filter offers. An empty value keeps both.
+const (
+	stateAny      = ""
+	stateActive   = "true"
+	stateInactive = "false"
+)
+
+// ModelRow is one line of the plain list: the model, the drop and the season
+// that hold it, and the photo that stands for it.
+//
+// Thumbnail is the address of the cover photo, and it is empty for a model that
+// holds no photo.
+type ModelRow struct {
+	Model     catalog.Model
+	Season    catalog.Season
+	Drop      catalog.Drop
+	Thumbnail string
+}
+
+// Href is the card of this model.
+func (r ModelRow) Href() string { return ModelsPath + "/" + r.Model.ID.String() }
+
+// ModelFilter is what the three controls above the list hold, and the choices
+// they offer. Every value is the wire form, so it goes straight back into the
+// control it came from.
+type ModelFilter struct {
+	SeasonID string
+	DropID   string
+	Active   string
+
+	// The choices. Drops carries every drop, under the season that holds it.
+	Seasons []catalog.Season
+	Drops   []DropGroup
+}
+
+// Set reports whether any control keeps rows out of the list.
+func (f ModelFilter) Set() bool {
+	return f.SeasonID != "" || f.DropID != "" || f.Active != ""
+}
+
+// seasonChoices is the season filter: every season, newest last, over the
+// choice that keeps them all.
+func (f ModelFilter) seasonChoices() []selectOption {
+	choices := make([]selectOption, 0, len(f.Seasons)+1)
+	choices = append(choices, selectOption{Value: "", Label: labels.FilterAny})
+	for _, season := range f.Seasons {
+		choices = append(choices, selectOption{Value: season.ID.String(), Label: season.Name})
+	}
+	return choices
+}
+
+// dropChoices is the drop filter: the drops under the season that holds them,
+// over the choice that keeps them all.
+func (f ModelFilter) dropChoices() []selectGroup {
+	return dropGroups(f.Drops, selectOption{Value: "", Label: labels.FilterAny})
+}
+
+// stateChoices is the state filter.
+func (f ModelFilter) stateChoices() []selectOption {
+	return []selectOption{
+		{Value: stateAny, Label: labels.FilterAny},
+		{Value: stateActive, Label: labels.StateActive},
+		{Value: stateInactive, Label: labels.StateInactive},
+	}
+}
+
+// dropGroups renders drops as the choices of a select, one heading per season.
+// The leading options sit above the headings, and a group with no drop is left
+// out.
+func dropGroups(groups []DropGroup, lead ...selectOption) []selectGroup {
+	choices := make([]selectGroup, 0, len(groups)+1)
+	if len(lead) > 0 {
+		choices = append(choices, selectGroup{Options: lead})
+	}
+	for _, group := range groups {
+		if len(group.Drops) == 0 {
+			continue
+		}
+		options := make([]selectOption, len(group.Drops))
+		for i, drop := range group.Drops {
+			options[i] = selectOption{Value: drop.ID.String(), Label: drop.Name}
+		}
+		choices = append(choices, selectGroup{Label: group.Season.Name, Options: options})
+	}
+	return choices
+}
+
+// ModelsPage is the plain list: the identity columns of every model the filter
+// keeps.
+type ModelsPage struct {
+	Chrome Chrome
+	Rows   []ModelRow
+	Filter ModelFilter
+
+	// CanCreate is false while no drop is there to put a model in. The screen
+	// then offers no create link, because the form has nothing to choose from.
+	CanCreate bool
+}
+
+// EmptyText tells the two empty lists apart: a section that holds no models,
+// and a filter that keeps none of them.
+func (p ModelsPage) EmptyText() string {
+	if p.Filter.Set() {
+		return labels.ModelsNoMatch
+	}
+	return labels.ModelsEmpty
+}
+
+templ Models(page ModelsPage) {
+	{{ page.Chrome.Current = labels.ModelsTitle }}
+	@Page(labels.ModelsTitle, page.Chrome) {
+		<main class="mx-auto w-full max-w-5xl px-6 py-10">
+			<div class="mb-6 flex items-center gap-4">
+				<h1 class="text-2xl font-semibold tracking-tight">{ labels.ModelsTitle }</h1>
+				if page.CanCreate {
+					@button.Button(button.Props{Href: ModelsPath + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
+						{ labels.ActionAddModel }
+					}
+				}
+			</div>
+			@modelFilters(page.Filter)
+			<div id={ modelsResults }>
+				@ModelsResults(page)
+			</div>
+		</main>
+	}
+}
+
+// modelFilters is the three controls above the list. htmx swaps the table when
+// a control moves. Without htmx the form still works: it submits the same GET
+// the links use, and the page comes back filtered.
+templ modelFilters(filter ModelFilter) {
+	<form
+		method="get"
+		action={ templ.SafeURL(ModelsPath) }
+		class="mb-4 flex flex-wrap items-end gap-3"
+		hx-get={ ModelsPath }
+		hx-trigger="change, submit"
+		hx-target={ "#" + modelsResults }
+		hx-swap="innerHTML"
+		hx-push-url="true"
+	>
+		<div class="min-w-40 flex-1">
+			@formField(fieldProps{Name: FieldModelSeason, Label: labels.ModelsSeason}) {
+				@selectBox(FieldModelSeason, filter.seasonChoices(), filter.SeasonID, false)
+			}
+		</div>
+		<div class="min-w-40 flex-1">
+			@formField(fieldProps{Name: FieldModelDrop, Label: labels.ModelsDrop}) {
+				@groupedSelect(FieldModelDrop, filter.dropChoices(), filter.DropID, false)
+			}
+		</div>
+		<div class="min-w-40 flex-1">
+			@formField(fieldProps{Name: FieldModelActive, Label: labels.ModelsFilterState}) {
+				@selectBox(FieldModelActive, filter.stateChoices(), filter.Active, false)
+			}
+		</div>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+			{ labels.ActionFilter }
+		}
+	</form>
+}
+
+// ModelsResults is the table alone. The full page renders it inside the list,
+// and a filter request answers with it and nothing else.
+templ ModelsResults(page ModelsPage) {
+	if len(page.Rows) == 0 {
+		@emptyPanel(page.EmptyText())
+	} else {
+		<div class="overflow-x-auto rounded-lg border">
+			<table class="w-full text-sm">
+				<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+					<tr>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.ModelsPhoto }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.ModelsArticle }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.ModelsSeason }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.ModelsDrop }</th>
+						<th scope="col" class="px-4 py-3 font-medium">{ labels.StateColumn }</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range page.Rows {
+						@modelRow(row)
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+// modelRow greys a model that is turned off, and deletes nothing.
+templ modelRow(row ModelRow) {
+	<tr
+		if row.Model.Active {
+			class="border-b last:border-0 hover:bg-muted/50"
+		} else {
+			class="border-b last:border-0 text-muted-foreground opacity-60 hover:bg-muted/50"
+		}
+	>
+		<td class="px-4 py-2">
+			@modelThumbnail(row)
+		</td>
+		<td class="px-4 py-3">
+			<a href={ templ.SafeURL(row.Href()) } class="font-medium underline-offset-4 hover:underline">
+				{ row.Model.Article }
+			</a>
+		</td>
+		<td class="px-4 py-3">{ row.Season.Name }</td>
+		<td class="px-4 py-3">{ row.Drop.Name }</td>
+		<td class="px-4 py-3">
+			@stateCell(row.Model.Active)
+		</td>
+	</tr>
+}
+
+// modelThumbnail is the cover photo, and a plain box for a model that holds no
+// photo.
+templ modelThumbnail(row ModelRow) {
+	if row.Thumbnail == "" {
+		<div class="size-10 rounded border border-dashed" aria-hidden="true"></div>
+	} else {
+		<img src={ row.Thumbnail } alt={ labels.ModelsPhotoOf + " " + row.Model.Article } class="size-10 rounded border object-cover" loading="lazy"/>
+	}
+}
+
+// ModelForm is the 'create' screen: a season, a drop inside it, and an
+// article.
+type ModelForm struct {
+	Chrome   Chrome
+	SeasonID string
+	DropID   string
+	Article  string
+
+	// The choices. Drops holds the drops of the chosen season, or of every
+	// season while no season is chosen.
+	Seasons []catalog.Season
+	Drops   []DropGroup
+
+	Alert  string
+	Errors validate.FieldErrors
+}
+
+// seasonChoices is the season control. It narrows the drops and posts nothing
+// the service reads: a model belongs to a drop, and the drop names the season.
+func (f ModelForm) seasonChoices() []selectOption {
+	choices := make([]selectOption, 0, len(f.Seasons)+1)
+	choices = append(choices, selectOption{Value: "", Label: labels.FilterAny})
+	for _, season := range f.Seasons {
+		choices = append(choices, selectOption{Value: season.ID.String(), Label: season.Name})
+	}
+	return choices
+}
+
+func (f ModelForm) dropChoices() []selectGroup { return dropGroups(f.Drops) }
+
+// HasDrop reports whether there is a drop to put a model in.
+func (f ModelForm) HasDrop() bool {
+	for _, group := range f.Drops {
+		if len(group.Drops) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+templ NewModel(form ModelForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	{{ form.Chrome.Current = labels.ModelsTitle }}
+	@Page(labels.ModelsNewTitle, form.Chrome) {
+		<main class="mx-auto w-full max-w-xl px-6 py-10">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">{ labels.ModelsNewTitle }</h1>
+			@formAlert(form.Alert)
+			if !form.HasDrop() {
+				@emptyPanel(labels.ModelsNoDrop)
+				<div class="mt-4">
+					@button.Button(button.Props{Href: DropsPath + "/new", Size: button.SizeSm}) {
+						{ labels.ActionAddDrop }
+					}
+				</div>
+			} else {
+				<form method="post" action={ templ.SafeURL(ModelsPath) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
+					@formField(fieldProps{Name: FieldModelSeason, Label: labels.ModelsSeason}) {
+						<select
+							id={ FieldModelSeason }
+							name={ FieldModelSeason }
+							class={ selectClass(false) }
+							hx-get={ ModelsPath + "/new" }
+							hx-target={ "#" + modelDropField }
+							hx-swap="outerHTML"
+						>
+							for _, choice := range form.seasonChoices() {
+								<option value={ choice.Value } selected?={ choice.Value == form.SeasonID }>{ choice.Label }</option>
+							}
+						</select>
+					}
+					@ModelDropField(form)
+					@formField(fieldProps{
+						Name:    FieldModelArticle,
+						Label:   labels.ModelsArticle,
+						Hint:    labels.ModelsArticleHint,
+						Message: messages[FieldModelArticle],
+					}) {
+						@input.Input(input.Props{
+							ID:         FieldModelArticle,
+							Name:       FieldModelArticle,
+							Value:      form.Article,
+							HasError:   messages[FieldModelArticle] != "",
+							Attributes: templ.Attributes{"autocomplete": "off"},
+						})
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+						{ labels.ActionSave }
+					}
+				</form>
+			}
+			<div class="mt-4">
+				@button.Button(button.Props{Href: ModelsPath, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.ActionBackToList }
+				}
+			</div>
+		</main>
+	}
+}
+
+// ModelDropField is the drop control of the create screen. The season control
+// swaps it, so it carries the identifier the swap targets.
+templ ModelDropField(form ModelForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	<div id={ modelDropField }>
+		@formField(fieldProps{
+			Name:    FieldModelDrop,
+			Label:   labels.ModelsDrop,
+			Hint:    labels.ModelsDropHint,
+			Message: messages[FieldModelDrop],
+		}) {
+			@groupedSelect(FieldModelDrop, form.dropChoices(), form.DropID, messages[FieldModelDrop] != "")
+		}
+	</div>
+}

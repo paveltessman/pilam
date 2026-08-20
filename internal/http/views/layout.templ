@@ -72,7 +72,7 @@ templ appHeader(chrome Chrome) {
 
 // items is the nav a user of this role sees.
 func (c Chrome) items() []navItem {
-	items := []navItem{{Label: labels.NavBoard, Href: "/"}}
+	items := []navItem{{Label: labels.ModelsTitle, Href: ModelsPath}}
 	if c.IsRoot {
 		items = append(items,
 			navItem{Label: labels.NavSeasons, Href: SeasonsPath},

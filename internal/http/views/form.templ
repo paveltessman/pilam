@@ -57,22 +57,49 @@ type selectOption struct {
 	Label string
 }
 
+// selectGroup is a set of choices under one heading. A group with no label
+// renders its choices above the headed ones, which is where a select puts the
+// choice that filters nothing out.
+type selectGroup struct {
+	Label   string
+	Options []selectOption
+}
+
 // selectBox is the one select every form uses.
 templ selectBox(name string, options []selectOption, current string, hasError bool) {
-	<select
-		id={ name }
-		name={ name }
-		if hasError {
-			aria-invalid="true"
-			class="flex h-9 w-full rounded-md border border-destructive bg-transparent px-3 py-1 text-base shadow-xs outline-none md:text-sm"
-		} else {
-			class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm"
-		}
-	>
+	<select id={ name } name={ name } aria-invalid?={ hasError } class={ selectClass(hasError) }>
 		for _, option := range options {
 			<option value={ option.Value } selected?={ option.Value == current }>{ option.Label }</option>
 		}
 	</select>
+}
+
+// groupedSelect is selectBox with the choices under headings.
+templ groupedSelect(name string, groups []selectGroup, current string, hasError bool) {
+	<select id={ name } name={ name } aria-invalid?={ hasError } class={ selectClass(hasError) }>
+		for _, group := range groups {
+			if group.Label == "" {
+				for _, option := range group.Options {
+					<option value={ option.Value } selected?={ option.Value == current }>{ option.Label }</option>
+				}
+			} else {
+				<optgroup label={ group.Label }>
+					for _, option := range group.Options {
+						<option value={ option.Value } selected?={ option.Value == current }>{ option.Label }</option>
+					}
+				</optgroup>
+			}
+		}
+	</select>
+}
+
+// selectClass is what both selects wear, in the two states a field has.
+func selectClass(hasError bool) string {
+	const shared = "flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-base shadow-xs outline-none md:text-sm"
+	if hasError {
+		return shared + " border-destructive"
+	}
+	return shared + " border-input focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
 }
 
 // activeBox is the flag a catalog record carries.
