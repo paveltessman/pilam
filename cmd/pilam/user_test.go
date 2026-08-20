@@ -31,7 +31,11 @@ func userDB(t *testing.T) config.Config {
 		t.Fatalf("This test needs a database. Make sure db is running and %s is set", urlEnv)
 	}
 
-	cfg := config.Config{Database: config.Database{URL: url}, Timezone: time.UTC}
+	cfg := config.Config{
+		Database: config.Database{URL: url},
+		Media:    config.Media{Dir: t.TempDir()},
+		Timezone: time.UTC,
+	}
 	ctx := t.Context()
 	count := migrationCount(t)
 

@@ -84,13 +84,14 @@ type UsersReport struct {
 	Passwd string
 }
 
-// seedUsers writes the employees, and reports what it wrote.
+// seedUsers writes the employees, and reports what it wrote. It returns the
+// context the rest of the dataset is written under.
 //
 // The root at rootAt goes in first and creates themselves, because nobody is
 // logged in when the seed runs. From there on the context names that root, so
 // the trail reads the way it reads in a real company: one administrator opened
 // every account.
-func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersReport, error) {
+func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersReport, context.Context, error) {
 	people := roster
 	if opts.Users > 0 {
 		people = people[:opts.Users]
@@ -112,7 +113,7 @@ func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersR
 			report.Skipped++
 
 		case err != nil:
-			return report, fmt.Errorf("seed: creating user %s: %w", email, err)
+			return report, ctx, fmt.Errorf("seed: creating user %s: %w", email, err)
 
 		default:
 			// A user is born active, so the two who left are deactivated after
@@ -125,7 +126,7 @@ func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersR
 					Active:    false,
 				})
 				if err != nil {
-					return report, fmt.Errorf("seed: deactivating user %s: %w", email, err)
+					return report, ctx, fmt.Errorf("seed: deactivating user %s: %w", email, err)
 				}
 			}
 
@@ -135,12 +136,12 @@ func seedUsers(ctx context.Context, authSvc *auth.Service, opts Options) (UsersR
 		if i == rootAt {
 			ctx, err = runAsRoot(ctx, authSvc, user, email)
 			if err != nil {
-				return report, err
+				return report, ctx, err
 			}
 		}
 	}
 
-	return report, nil
+	return report, ctx, nil
 }
 
 // runAsRoot returns a context that names the demo root as the actor of every

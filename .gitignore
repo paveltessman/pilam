@@ -2,6 +2,9 @@
 /bin/
 /tmp/
 
+# Uploaded files, when the app runs on the host
+/var/
+
 # Local environment
 .env
 .setenv

@@ -21,7 +21,7 @@ const (
 	defaultHTTPAddr      = ":8080"
 	defaultShutdownGrace = "10s"
 	defaultDatabaseURL   = "postgres://pilam:pilam@localhost:5433/pilam?sslmode=disable"
-	defaultMediaDir      = "tmp/media"
+	defaultMediaDir      = "var/media"
 	defaultSessionTTL    = "168h"
 	defaultTimezone      = "Europe/Moscow"
 	defaultLogLevel      = "info"
