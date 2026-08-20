@@ -14,18 +14,32 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/requestid"
 )
 
-// EntityUser is the entity name the user rows are recorded under.
-const EntityUser = "user"
+// The entity names the rows are recorded under.
+//
+// A model photo has no name of its own: §10.3 puts the history on the model
+// screen, a removed photo has no screen to read it on, and one reorder moves
+// the whole strip at once. So a photo change is a change of the model.
+const (
+	EntityUser   = "user"
+	EntitySeason = "season"
+	EntityDrop   = "drop"
+	EntityModel  = "model"
+)
 
 // The actions the trail names.
 const (
 	ActionCreated       = "created"
+	ActionChanged       = "changed"
 	ActionNameChanged   = "name_changed"
 	ActionRoleChanged   = "role_changed"
 	ActionDeactivated   = "deactivated"
 	ActionReactivated   = "reactivated"
 	ActionPasswdChanged = "passwd_changed"
 	ActionPasswdReset   = "passwd_reset"
+
+	ActionPhotoAdded     = "photo_added"
+	ActionPhotoRemoved   = "photo_removed"
+	ActionPhotoReordered = "photo_reordered"
 )
 
 // Marker stands in for a value the trail must not hold, such as a password. The

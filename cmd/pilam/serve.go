@@ -10,6 +10,7 @@ import (
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/catalog"
 	pilamhttp "github.com/paveltessman/pilam/internal/http"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
@@ -49,6 +50,13 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 	trail := audit.NewTrail(trailStore, clk, idGen)
 	auditLog := audit.NewLog(trailStore, clk)
 	authSvc := auth.NewService(postgres.NewUsers(db), db, auth.NewThrottle(clk), idGen, trail)
+	catalogSvc := catalog.NewService(catalog.Stores{
+		Seasons: postgres.NewSeasons(db),
+		Drops:   postgres.NewDrops(db),
+		Models:  postgres.NewModels(db),
+		Photos:  postgres.NewPhotos(db),
+		Atomic:  db,
+	}, idGen, trail)
 
 	srv := &http.Server{
 		Addr: cfg.HTTP.Addr,
@@ -59,6 +67,7 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 			Media:      mediaStore,
 			SessionMgr: sessionMgr,
 			AuthSvc:    authSvc,
+			CatalogSvc: catalogSvc,
 			AuditLog:   auditLog,
 		}),
 		ReadHeaderTimeout: readHeaderTimeout,

@@ -9,6 +9,7 @@ import (
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/static"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -32,6 +33,7 @@ type Deps struct {
 	Media      media.Store
 	SessionMgr *session.Manager
 	AuthSvc    *auth.Service
+	CatalogSvc *catalog.Service
 	AuditLog   *audit.Log
 }
 
@@ -49,6 +51,8 @@ func NewRouter(deps Deps) http.Handler {
 		panic("http: nil session manager")
 	case deps.AuthSvc == nil:
 		panic("http: nil auth service")
+	case deps.CatalogSvc == nil:
+		panic("http: nil catalog service")
 	case deps.AuditLog == nil:
 		panic("http: nil audit log")
 	}
