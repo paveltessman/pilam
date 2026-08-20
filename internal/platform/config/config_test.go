@@ -44,8 +44,8 @@ func TestDefaultsAreValidAndComplete(t *testing.T) {
 	if cfg.Database.URL != defaultDatabaseURL {
 		t.Errorf("Database.URL = %q, want %q", cfg.Database.URL, defaultDatabaseURL)
 	}
-	if !strings.HasSuffix(cfg.Media.Dir, "tmp/media") {
-		t.Errorf("Media.Dir = %q, want it to end in tmp/media", cfg.Media.Dir)
+	if !strings.HasSuffix(cfg.Media.Dir, defaultMediaDir) {
+		t.Errorf("Media.Dir = %q, want it to end in %s", cfg.Media.Dir, defaultMediaDir)
 	}
 	if cfg.Timezone == nil || cfg.Timezone.String() != defaultTimezone {
 		t.Errorf("Timezone = %v, want %s", cfg.Timezone, defaultTimezone)

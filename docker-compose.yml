@@ -29,6 +29,11 @@ services:
       - .:/src
       - media:/var/lib/pilam/media
 
+      # air rebuilds into ./tmp as root. Without this volume those files land
+      # in the work tree owned by root, and the host user can then neither
+      # write there nor run `make clean`.
+      - apptmp:/src/tmp
+
       # Keeping the module and build caches out of the bind mount so that
       # a reload take a second instead of a minute.
       - gomod:/go/pkg/mod
@@ -40,5 +45,6 @@ services:
 volumes:
   pgdata:
   media:
+  apptmp:
   gomod:
   gobuild:
