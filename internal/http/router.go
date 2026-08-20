@@ -75,9 +75,19 @@ func NewRouter(deps Deps) http.Handler {
 		middleware.RequireIdentity(loginPath),
 		middleware.RequirePasswordChange(changePasswordPath),
 	)
-	mux.Handle("GET /{$}", guard(showBoard()))
+	// The root path holds no screen. It sends the browser to the model list.
+	mux.Handle("GET /{$}", guard(redirectTo(modelsPath)))
 	mux.Handle("GET "+changePasswordPath, guard(showChangePassword()))
 	mux.Handle("POST "+changePasswordPath, guard(submitChangePassword(deps.SessionMgr, deps.AuthSvc)))
+
+	mux.Handle("GET "+modelsPath, guard(showModels(deps.CatalogSvc, deps.Media)))
+	mux.Handle("POST "+modelsPath, guard(createModel(deps.CatalogSvc)))
+	mux.Handle("GET "+modelNewPath, guard(showNewModel(deps.CatalogSvc)))
+	mux.Handle("GET "+modelPath, guard(showModel(deps.CatalogSvc, deps.Media)))
+	mux.Handle("POST "+modelPath, guard(saveModel(deps.CatalogSvc, deps.Media)))
+	mux.Handle("POST "+modelPhotosPath, guard(addModelPhotos(deps.CatalogSvc, deps.Media)))
+	mux.Handle("POST "+modelOrderPath, guard(reorderModelPhotos(deps.CatalogSvc, deps.Media)))
+	mux.Handle("POST "+modelPhotoPath, guard(removeModelPhoto(deps.CatalogSvc)))
 
 	// S5, the users section. Root only: a member gets a 403 on every route of
 	// it, and never sees the nav link that leads here.

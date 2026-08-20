@@ -1,7 +1,9 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +51,51 @@ func postedID(r *http.Request, field string) (ids.ID, error) {
 		return ids.Nil, validate.Fail(field, validate.NotAllowed)
 	}
 	return id, nil
+}
+
+// postedOrder reads a control that posts a list of identifiers, such as the
+// photo strip of the model card.
+//
+// One value that is not an identifier refuses the whole list, because a partial
+// order is not an order.
+func postedOrder(r *http.Request, field string) ([]ids.ID, error) {
+	if err := r.ParseForm(); err != nil {
+		return nil, fmt.Errorf("%w: the request carries no readable form: %w", ids.ErrInvalid, err)
+	}
+
+	raw := r.PostForm[field]
+	order := make([]ids.ID, len(raw))
+	for i, value := range raw {
+		id, err := ids.Parse(strings.TrimSpace(value))
+		if err != nil {
+			return nil, err
+		}
+		order[i] = id
+	}
+	return order, nil
+}
+
+// parsedID reads an identifier the user did not type: a query parameter of a
+// filter, or a select the form posts back.
+//
+// Anything that is not an identifier gives Nil. A filter is not a write, so a
+// value naming nothing filters nothing out.
+func parsedID(raw string) ids.ID {
+	id, err := ids.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return ids.Nil
+	}
+	return id
+}
+
+// flagOf reads a filter over a flag. It points at the flag for "true" and
+// "false", and it is nil for anything else, which keeps both.
+func flagOf(raw string) *bool {
+	flag, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		return nil
+	}
+	return &flag
 }
 
 // postedFlag reads a checkbox. An unchecked box posts nothing at all.

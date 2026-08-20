@@ -19,35 +19,43 @@ const (
 )
 
 // showDrops lists the drops of every season, under the season that holds them.
-//
-// A drop belongs to a season, and the store reads the drops of one season at a
-// time, so the screen asks season by season.
 func showDrops(catalogSvc *catalog.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		logger := logging.FromContext(ctx)
-
-		seasons, err := catalogSvc.ListSeasons(ctx)
-		if err != nil {
-			logger.Error("listing seasons failed", "err", err)
-			writeServerError(w)
+		groups, ok := dropsBySeason(w, r, catalogSvc)
+		if !ok {
 			return
 		}
 
-		page := views.DropsPage{Chrome: chrome(ctx), Groups: make([]views.DropGroup, 0, len(seasons))}
-		for _, season := range seasons {
-			drops, err := catalogSvc.ListDrops(ctx, season.ID)
-			if err != nil {
-				logger.Error("listing the drops of a season failed", "season", season.ID, "err", err)
-				writeServerError(w)
-				return
-			}
-			page.Groups = append(page.Groups, views.DropGroup{Season: season, Drops: drops})
-		}
-
+		page := views.DropsPage{Chrome: chrome(r.Context()), Groups: groups}
 		render(w, r, http.StatusOK, views.Drops(page))
 	}
 	return handler
+}
+
+// dropsBySeason is every drop, under the season that holds it, in the order the
+// two lists show them. It answers 500 itself and reports false on a failure.
+func dropsBySeason(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Service) ([]views.DropGroup, bool) {
+	ctx := r.Context()
+	logger := logging.FromContext(ctx)
+
+	seasons, err := catalogSvc.ListSeasons(ctx)
+	if err != nil {
+		logger.Error("listing seasons failed", "err", err)
+		writeServerError(w)
+		return nil, false
+	}
+
+	groups := make([]views.DropGroup, 0, len(seasons))
+	for _, season := range seasons {
+		drops, err := catalogSvc.ListDrops(ctx, season.ID)
+		if err != nil {
+			logger.Error("listing the drops of a season failed", "season", season.ID, "err", err)
+			writeServerError(w)
+			return nil, false
+		}
+		groups = append(groups, views.DropGroup{Season: season, Drops: drops})
+	}
+	return groups, true
 }
 
 // showNewDrop renders the empty create form, with the active seasons to choose

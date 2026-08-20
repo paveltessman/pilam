@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	loginPath   = "/login"
-	logoutPath  = "/logout"
-	successPath = "/"
+	loginPath  = "/login"
+	logoutPath = "/logout"
+
+	// Where a login lands, and where the root path sends the browser.
+	successPath = modelsPath
 )
 
 func showLogin() http.HandlerFunc {
