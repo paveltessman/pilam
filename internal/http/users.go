@@ -122,7 +122,7 @@ func showUser(authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 			Trail:     trail,
 		}
 		if isSaved(r) {
-			form.Notice = labels.UsersSaved
+			form.Notice = labels.Saved
 		}
 		render(w, r, http.StatusOK, views.User(form))
 	}

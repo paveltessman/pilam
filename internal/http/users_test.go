@@ -344,12 +344,12 @@ func TestEditUserWritesNameAndRole(t *testing.T) {
 	}
 
 	// The card the browser lands on reports the save. A plain visit does not.
-	if saved := getAs(t, d, path+"?saved=1", cookie).Body.String(); !strings.Contains(saved, labels.UsersSaved) {
+	if saved := getAs(t, d, path+"?saved=1", cookie).Body.String(); !strings.Contains(saved, labels.Saved) {
 		t.Error("the card after the save does not report it")
 	}
 
 	body := getAs(t, d, path, cookie).Body.String()
-	if strings.Contains(body, labels.UsersSaved) {
+	if strings.Contains(body, labels.Saved) {
 		t.Error("a plain visit to the card reports a save")
 	}
 	for _, want := range []string{`value="Augusta"`, `value="King"`, `value="root" selected`} {

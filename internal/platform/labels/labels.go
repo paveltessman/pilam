@@ -6,6 +6,7 @@ import "github.com/paveltessman/pilam/internal/platform/password"
 const (
 	NavBoard      = "Сезон"
 	NavExceptions = "Отставания"
+	NavSeasons    = "Сезоны"
 	NavDrops      = "Дропы"
 	NavUsers      = "Пользователи"
 	NavLogOut     = "Выйти"
@@ -14,7 +15,6 @@ const (
 const (
 	ActionSave        = "Сохранить"
 	ActionCancel      = "Отмена"
-	ActionNewStyle    = "Новая модель"
 	ActionAddColorway = "Добавить цвет"
 	ActionAddPhoto    = "Добавить фото"
 	ActionSearch      = "Поиск"
@@ -22,8 +22,19 @@ const (
 	ActionMarkDone    = "Отметить выполненным"
 	ActionLogIn       = "Войти"
 	ActionAddUser     = "Новый пользователь"
+	ActionAddSeason   = "Новый сезон"
+	ActionAddDrop     = "Новый дроп"
 	ActionResetPasswd = "Сбросить пароль"
 	ActionBackToList  = "Назад к списку"
+)
+
+// Common  strings that are used across ddifferent screens.
+const (
+	Saved = "Изменения сохранены."
+
+	StateColumn   = "Состояние"
+	StateActive   = "Активен"
+	StateInactive = "Неактивен"
 )
 
 const (
@@ -67,9 +78,6 @@ const (
 	UsersSearchHint = "Имя, фамилия или почта"
 	UsersNoMatch    = "Ничего не найдено"
 
-	// What the card reports after it saves the changes.
-	UsersSaved = "Изменения сохранены."
-
 	// The rule that keeps the last root from locking the section.
 	UsersSelfLockout = "Нельзя снять доступ с самого себя. Это должен сделать другой администратор."
 )
@@ -102,6 +110,34 @@ const (
 	UsersPasswdReset   = "Пароль сброшен"
 	UsersPasswdOnce    = "Это временный пароль. Он больше не будет показан. Скопируйте его и передайте пользователю."
 	UsersPasswdChange  = "При первом входе пользователь установит новый пароль."
+)
+
+// The seasons section
+const (
+	SeasonsTitle     = "Сезоны"
+	SeasonsNewTitle  = "Новый сезон"
+	SeasonsEditTitle = "Карточка сезона"
+	SeasonsEmpty     = "Сезонов пока нет."
+	SeasonsName      = "Название"
+	SeasonsNameHint  = "Например, S1."
+	SeasonsStart     = "Начало сезона"
+	SeasonsStartHint = "День, с которого сезон в работе."
+)
+
+// The drops section
+const (
+	DropsTitle      = "Дропы"
+	DropsNewTitle   = "Новый дроп"
+	DropsEditTitle  = "Карточка дропа"
+	DropsEmpty      = "Дропов пока нет."
+	DropsNone       = "В этом сезоне дропов пока нет."
+	DropsName       = "Название"
+	DropsSeason     = "Сезон"
+	DropsTarget     = "Плановая дата"
+	DropsTargetHint = "Планируемая дата выхода в продажу. От неё считаются сроки этапов."
+
+	DropsNoSeason    = "Сначала создайте сезон: дроп существует внутри сезона."
+	DropsSeasonFixed = "Сезон дропа изменить нельзя."
 )
 
 // The failures in the http middleware chain
