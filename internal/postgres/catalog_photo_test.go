@@ -54,6 +54,33 @@ func TestPhotosReorderSwapsTwoPositions(t *testing.T) {
 	}
 }
 
+// The list reads the cover of a whole page in one query: the photo at position
+// 0 of every model named, and nothing for a model that holds none.
+func TestPhotosThumbnailsAreTheCoverOfEachModelNamed(t *testing.T) {
+	store := catalogDB(t)
+	season := store.season(t, "S1", "2026-11-01")
+	drop := store.drop(t, season, "Drop 1", "2027-02-15")
+
+	first := store.model(t, drop, "A-100")
+	second := store.model(t, drop, "A-200")
+	bare := store.model(t, drop, "A-300")
+
+	cover := store.photo(t, first, "a", 0)
+	store.photo(t, first, "b", 1)
+	store.photo(t, second, "c", 0)
+
+	covers, err := store.photos.Thumbnails(t.Context(), []ids.ID{first.ID, bare.ID})
+	if err != nil {
+		t.Fatalf("Thumbnails: %v", err)
+	}
+	if len(covers) != 1 {
+		t.Fatalf("Thumbnails returned %d covers, want 1: %+v", len(covers), covers)
+	}
+	if got := covers[first.ID]; got != cover {
+		t.Errorf("cover of the first model = %+v, want %+v", got, cover)
+	}
+}
+
 func TestPhotosRemoveDeletesOneRow(t *testing.T) {
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")

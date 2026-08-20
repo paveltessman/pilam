@@ -214,3 +214,40 @@ func TestReorderPhotosWritesNothingWhenTheOrderStands(t *testing.T) {
 		t.Errorf("The trail holds %d entries, want 0", len(trail.entries))
 	}
 }
+
+// The list asks for a whole page of covers at once, so the service passes the
+// identifiers through and reads the store once.
+func TestThumbnailsReadTheStoreOnce(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	ctx := signedIn(t)
+	_, drop, model := spine(t, svc, ctx)
+
+	if _, err := svc.AddPhoto(ctx, model.ID, firstKey); err != nil {
+		t.Fatalf("AddPhoto: %v", err)
+	}
+	if _, err := svc.AddPhoto(ctx, model.ID, secondKey); err != nil {
+		t.Fatalf("AddPhoto: %v", err)
+	}
+
+	bare, err := svc.CreateModel(ctx, ModelCreateParams{DropID: drop.ID, Article: "A-200"})
+	if err != nil {
+		t.Fatalf("CreateModel: %v", err)
+	}
+
+	covers, err := svc.Thumbnails(ctx, model.ID, bare.ID)
+	if err != nil {
+		t.Fatalf("Thumbnails: %v", err)
+	}
+	if len(covers) != 1 {
+		t.Fatalf("Thumbnails returned %d covers, want 1: %+v", len(covers), covers)
+	}
+	if got := covers[model.ID].MediaKey; got != firstKey {
+		t.Errorf("cover = %q, want the first photo %q", got, firstKey)
+	}
+
+	// A page with no rows on it asks the store nothing at all.
+	rows.failWith = errors.New("the store was asked")
+	if covers, err := svc.Thumbnails(ctx); err != nil || len(covers) != 0 {
+		t.Errorf("Thumbnails of no models = %+v, %v, want an empty map and no error", covers, err)
+	}
+}

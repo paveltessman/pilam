@@ -209,6 +209,20 @@ func (s *catalogStore) photoByModel(_ context.Context, modelID ids.ID) ([]catalo
 	return photos, nil
 }
 
+// photoThumbnails is the cover of each model named: the photo at position 0.
+func (s *catalogStore) photoThumbnails(_ context.Context, modelIDs []ids.ID) (map[ids.ID]catalog.Photo, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	covers := make(map[ids.ID]catalog.Photo)
+	for _, photo := range s.photos {
+		if photo.Position == 0 && slices.Contains(modelIDs, photo.ModelID) {
+			covers[photo.ModelID] = photo
+		}
+	}
+	return covers, nil
+}
+
 func (s *catalogStore) photoAdd(_ context.Context, photo catalog.Photo) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -282,6 +296,9 @@ func (m modelsOf) Update(ctx context.Context, in catalog.Model) error { return m
 
 func (p photosOf) ByModel(ctx context.Context, id ids.ID) ([]catalog.Photo, error) {
 	return p.photoByModel(ctx, id)
+}
+func (p photosOf) Thumbnails(ctx context.Context, m []ids.ID) (map[ids.ID]catalog.Photo, error) {
+	return p.photoThumbnails(ctx, m)
 }
 func (p photosOf) Add(ctx context.Context, in catalog.Photo) error { return p.photoAdd(ctx, in) }
 func (p photosOf) Remove(ctx context.Context, id ids.ID) error     { return p.photoRemove(ctx, id) }

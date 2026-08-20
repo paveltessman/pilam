@@ -37,6 +37,21 @@ func (p *Photos) ByModel(ctx context.Context, modelID ids.ID) ([]catalog.Photo, 
 	return photos, nil
 }
 
+// Thumbnails returns the photo at position 0 of every model named, keyed by
+// the model. A model that holds no photo is not in the map.
+func (p *Photos) Thumbnails(ctx context.Context, modelIDs []ids.ID) (map[ids.ID]catalog.Photo, error) {
+	rows, err := p.db.queries(ctx).ListThumbnails(ctx, modelIDs)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: listing the thumbnails of %d models: %w", len(modelIDs), err)
+	}
+
+	covers := make(map[ids.ID]catalog.Photo, len(rows))
+	for _, row := range rows {
+		covers[row.ModelID] = photo(row)
+	}
+	return covers, nil
+}
+
 func (p *Photos) Add(ctx context.Context, in catalog.Photo) error {
 	params := sqlc.CreatePhotoParams{
 		ID:       in.ID,

@@ -213,6 +213,19 @@ func (s *store) PhotoByModel(_ context.Context, modelID ids.ID) ([]Photo, error)
 	return photos, nil
 }
 
+func (s *store) PhotoThumbnails(_ context.Context, modelIDs []ids.ID) (map[ids.ID]Photo, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+	covers := make(map[ids.ID]Photo)
+	for _, photo := range s.photos {
+		if photo.Position == 0 && slices.Contains(modelIDs, photo.ModelID) {
+			covers[photo.ModelID] = photo
+		}
+	}
+	return covers, nil
+}
+
 func (s *store) PhotoAdd(_ context.Context, photo Photo) error {
 	if s.failWith != nil {
 		return s.failWith
@@ -276,6 +289,9 @@ func (m modelsOf) Update(ctx context.Context, in Model) error { return m.ModelUp
 
 func (p photosOf) ByModel(ctx context.Context, id ids.ID) ([]Photo, error) {
 	return p.PhotoByModel(ctx, id)
+}
+func (p photosOf) Thumbnails(ctx context.Context, ids []ids.ID) (map[ids.ID]Photo, error) {
+	return p.PhotoThumbnails(ctx, ids)
 }
 func (p photosOf) Add(ctx context.Context, in Photo) error       { return p.PhotoAdd(ctx, in) }
 func (p photosOf) Remove(ctx context.Context, id ids.ID) error   { return p.PhotoRemove(ctx, id) }
