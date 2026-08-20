@@ -322,3 +322,36 @@ func TestDropScreensAnswer404ForADropThatIsNotThere(t *testing.T) {
 		}
 	}
 }
+
+// The card of one drop carries what the trail recorded about that drop.
+func TestDropCardShowsTheAuditTrail(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	seasonID := createdSeason(t, d, cookie, "S1", "2026-11-01")
+	id := createdDrop(t, d, cookie, seasonID, "Drop 1", "2027-02-15")
+	path := dropsPath + "/" + id
+
+	rec := postAs(t, d, path, dropForm(seasonID, "Drop 2", "2027-03-15", true), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	body := getAs(t, d, path, cookie).Body.String()
+	name := labels.AuditName + ": Drop 1 → Drop 2"
+	target := labels.DropsAuditTarget + ": 15.02.2027 → 15.03.2027"
+
+	wants(t, body,
+		labels.AuditTitle,
+		labels.DateTime(testNow),
+		labels.Name("Barbara", "Liskov"),
+		labels.DropsAuditCreated,
+		name,
+		target,
+	)
+
+	// Newest first: the create is the oldest of the three entries.
+	if strings.Index(body, labels.DropsAuditCreated) < strings.Index(body, name) {
+		t.Error("the trail does not show the newest change first")
+	}
+}

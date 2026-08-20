@@ -22,6 +22,9 @@ type ModelCard struct {
 	Alert   string
 	Notice  string
 	Errors  validate.FieldErrors
+
+	// Trail is what the audit log holds about this model, newest first.
+	Trail []AuditEvent
 }
 
 // Action is where the header form posts.
@@ -116,6 +119,7 @@ templ Model(card ModelCard) {
 					{ labels.ActionBackToList }
 				}
 			</div>
+			@auditTrail(card.Trail)
 		</main>
 	}
 }

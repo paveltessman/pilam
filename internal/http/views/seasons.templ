@@ -87,6 +87,10 @@ type SeasonForm struct {
 	Alert     string
 	Notice    string
 	Errors    validate.FieldErrors
+
+	// Trail is what the audit log holds about this season, newest first. The
+	// create screen has none, because the season is not there yet.
+	Trail []AuditEvent
 }
 
 // NewSeasonForm is the form of a season that already exists.
@@ -168,6 +172,9 @@ templ Season(form SeasonForm) {
 					{ labels.ActionBackToList }
 				}
 			</div>
+			if !form.IsNew() {
+				@auditTrail(form.Trail)
+			}
 		</main>
 	}
 }

@@ -497,7 +497,7 @@ func TestUserCardShowsTheAuditTrail(t *testing.T) {
 	card := usersPath + "/" + testUserID.String()
 
 	// Nothing is recorded about the seeded user yet.
-	if body := getAs(t, d, card, cookie).Body.String(); !strings.Contains(body, labels.UsersAuditEmpty) {
+	if body := getAs(t, d, card, cookie).Body.String(); !strings.Contains(body, labels.AuditEmpty) {
 		t.Error("the card of a user with no history does not say the history is empty")
 	}
 
@@ -512,7 +512,7 @@ func TestUserCardShowsTheAuditTrail(t *testing.T) {
 	role := labels.UsersAuditRole + ": " + labels.UsersRoleMember + " → " + labels.UsersRoleRoot
 
 	for _, want := range []string{
-		labels.UsersAuditTitle,
+		labels.AuditTitle,
 		labels.DateTime(testNow),
 		labels.Name("Barbara", "Liskov"),
 		name,

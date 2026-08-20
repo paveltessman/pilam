@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/http/views"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -82,15 +84,22 @@ func createSeason(catalogSvc *catalog.Service) http.HandlerFunc {
 	return handler
 }
 
-// showSeason renders the edit form of one season.
-func showSeason(catalogSvc *catalog.Service) http.HandlerFunc {
+// showSeason renders the edit form of one season, and the audit trail of that
+// season under it.
+func showSeason(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		season, ok := loadSeason(w, r, catalogSvc)
 		if !ok {
 			return
 		}
 
+		trail, ok := loadTrail(w, r, authSvc, log, audit.EntitySeason, season.ID)
+		if !ok {
+			return
+		}
+
 		form := views.NewSeasonForm(chrome(r.Context()), season)
+		form.Trail = trail
 		if isSaved(r) {
 			form.Notice = labels.Saved
 		}
@@ -100,7 +109,7 @@ func showSeason(catalogSvc *catalog.Service) http.HandlerFunc {
 }
 
 // saveSeason writes the name, the start date and the active flag.
-func saveSeason(catalogSvc *catalog.Service) http.HandlerFunc {
+func saveSeason(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -136,8 +145,15 @@ func saveSeason(catalogSvc *catalog.Service) http.HandlerFunc {
 			return
 		}
 
+		// The screen comes back whole: the refusal, and the trail under it.
+		trail, ok := loadTrail(w, r, authSvc, log, audit.EntitySeason, season.ID)
+		if !ok {
+			return
+		}
+
 		logger.Info("season update rejected", "season", season.ID, "reason", errs)
 		form.Errors = errs
+		form.Trail = trail
 		render(w, r, http.StatusUnprocessableEntity, views.Season(form))
 	}
 	return handler
