@@ -320,10 +320,10 @@ func TestSeasonScreensAnswer404ForASeasonThatIsNotThere(t *testing.T) {
 func TestNavOffersTheCatalogSectionsToARootAlone(t *testing.T) {
 	d := deps(t)
 
-	root := getAs(t, d, "/", loggedIn(t, d, rootEmail, rootPasswd)).Body.String()
+	root := getAs(t, d, successPath, loggedIn(t, d, rootEmail, rootPasswd)).Body.String()
 	wants(t, root, `href="`+seasonsPath+`"`, `href="`+dropsPath+`"`)
 
-	member := getAs(t, d, "/", loggedIn(t, d, testEmail, testPasswd)).Body.String()
+	member := getAs(t, d, successPath, loggedIn(t, d, testEmail, testPasswd)).Body.String()
 	for _, link := range []string{`href="` + seasonsPath + `"`, `href="` + dropsPath + `"`} {
 		if strings.Contains(member, link) {
 			t.Errorf("a member is offered %s", link)

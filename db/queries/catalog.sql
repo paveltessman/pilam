@@ -80,3 +80,10 @@ WHERE id = $1;
 UPDATE model_photo
 SET position = $2
 WHERE id = $1;
+
+-- name: ListThumbnails :many
+-- The cover of each model named: the photo at position 0. A model with no
+-- photo has no row here, so a list reads every cover in one query.
+SELECT * FROM model_photo
+WHERE model_id = ANY(@model_ids::uuid[])
+  AND position = 0;

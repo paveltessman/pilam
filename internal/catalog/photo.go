@@ -25,6 +25,10 @@ type Photos interface {
 	// ByModel returns the photo strip of one model, thumbnail first.
 	ByModel(ctx context.Context, modelID ids.ID) ([]Photo, error)
 
+	// Thumbnails returns the photo at position 0 of every model named, keyed
+	// by the model. A model that holds no photo is not in the map.
+	Thumbnails(ctx context.Context, modelIDs []ids.ID) (map[ids.ID]Photo, error)
+
 	Add(ctx context.Context, photo Photo) error
 
 	// Remove deletes one row. It returns ErrNoPhoto when the row is gone.
@@ -42,6 +46,20 @@ func (s *Service) ListPhotos(ctx context.Context, modelID ids.ID) ([]Photo, erro
 		return nil, fmt.Errorf("catalog: listing the photos of model %s: %w", modelID, err)
 	}
 	return photos, nil
+}
+
+// Thumbnails returns the cover of every model named, keyed by the model. A
+// model that holds no photo is not in the map.
+func (s *Service) Thumbnails(ctx context.Context, modelIDs ...ids.ID) (map[ids.ID]Photo, error) {
+	if len(modelIDs) == 0 {
+		return map[ids.ID]Photo{}, nil
+	}
+
+	covers, err := s.photos.Thumbnails(ctx, modelIDs)
+	if err != nil {
+		return nil, fmt.Errorf("catalog: listing the thumbnails of %d models: %w", len(modelIDs), err)
+	}
+	return covers, nil
 }
 
 // AddPhoto appends one photo to the strip of a model. The first photo of a

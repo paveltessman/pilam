@@ -3,8 +3,9 @@ package labels
 
 import "github.com/paveltessman/pilam/internal/platform/password"
 
+// The nav of the app header. The model list carries its own title there, so it
+// has no separate name of its own.
 const (
-	NavBoard      = "Сезон"
 	NavExceptions = "Отставания"
 	NavSeasons    = "Сезоны"
 	NavDrops      = "Дропы"
@@ -24,6 +25,7 @@ const (
 	ActionAddUser     = "Новый пользователь"
 	ActionAddSeason   = "Новый сезон"
 	ActionAddDrop     = "Новый дроп"
+	ActionAddModel    = "Новая модель"
 	ActionResetPasswd = "Сбросить пароль"
 	ActionBackToList  = "Назад к списку"
 )
@@ -35,6 +37,9 @@ const (
 	StateColumn   = "Состояние"
 	StateActive   = "Активен"
 	StateInactive = "Неактивен"
+
+	// The choice a filter offers for "do not filter on this at all".
+	FilterAny = "Все"
 )
 
 const (
@@ -138,6 +143,45 @@ const (
 
 	DropsNoSeason    = "Сначала создайте сезон: дроп существует внутри сезона."
 	DropsSeasonFixed = "Сезон дропа изменить нельзя."
+)
+
+// The models section: the list, the create screen, and the model card.
+const (
+	ModelsTitle     = "Модели"
+	ModelsNewTitle  = "Новая модель"
+	ModelsCardTitle = "Карточка модели"
+	ModelsEmpty     = "Моделей пока нет."
+	ModelsNoMatch   = "По этим фильтрам ничего не найдено."
+	ModelsArticle   = "Артикул"
+	ModelsSeason    = "Сезон"
+	ModelsDrop      = "Дроп"
+	ModelsPhoto     = "Фото"
+
+	ModelsArticleHint = "Номер артикула."
+	ModelsDropHint    = "Дроп, в котором выходит модель."
+	ModelsNoDrop      = "Сначала создайте сезон и дроп: модель существует внутри дропа."
+	ModelsSpineFixed  = "Сезон и дроп модели изменить нельзя."
+	ModelsFilterState = "Состояние"
+)
+
+// The photo strip of the model card.
+const (
+	ModelsPhotos      = "Фотографии"
+	ModelsPhotosEmpty = "Фотографий пока нет."
+	ModelsPhotosHint  = "Первое фото — обложка модели."
+	ModelsPhotoCover  = "Обложка"
+	ModelsPhotoOf     = "Фото модели"
+	ModelsPhotoUpload = "Выберите изображения"
+
+	ActionPhotoEarlier = "Сдвинуть влево"
+	ActionPhotoLater   = "Сдвинуть вправо"
+	ActionPhotoRemove  = "Удалить"
+
+	// What a refused upload or a refused reorder reports.
+	ModelsPhotoNone     = "Выберите хотя бы один файл."
+	ModelsPhotoTooLarge = "Файл слишком большой."
+	ModelsPhotoRejected = "Такой файл загрузить нельзя. Подойдёт JPEG, PNG, WebP или GIF."
+	ModelsPhotoOrder    = "Порядок фотографий устарел. Откройте страницу заново."
 )
 
 // The failures in the http middleware chain

@@ -38,6 +38,14 @@ func isSaved(r *http.Request) bool {
 	return r.URL.Query().Get(savedQuery) != ""
 }
 
+// redirectTo is the handler of a path that carries no screen of its own.
+func redirectTo(path string) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, path, http.StatusSeeOther)
+	}
+	return handler
+}
+
 func writeServerError(w http.ResponseWriter) {
 	http.Error(w, labels.ErrorUnexpected, http.StatusInternalServerError)
 }
