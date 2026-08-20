@@ -42,6 +42,23 @@ const (
 	FilterAny = "Все"
 )
 
+// The audit trail every card carries: the heading, the columns, and the words
+// the actions read as on more than one screen.
+const (
+	AuditTitle = "История изменений"
+	AuditEmpty = "Изменений пока нет."
+	AuditWhen  = "Когда"
+	AuditWho   = "Кто"
+	AuditWhat  = "Что изменилось"
+
+	AuditName = "Название изменено"
+	AuditOff  = "Запись отключена"
+	AuditOn   = "Запись включена"
+
+	// An action recorded and not named anywhere.
+	AuditOther = "Изменение"
+)
+
 const (
 	LoginTitle    = "Вход"
 	LoginEmail    = "Электронная почта"
@@ -87,15 +104,8 @@ const (
 	UsersSelfLockout = "Нельзя снять доступ с самого себя. Это должен сделать другой администратор."
 )
 
-// The audit trail on the user card: the heading, the columns, and the words
-// the recorded actions read as.
+// The words the audit trail on the user card reads as.
 const (
-	UsersAuditTitle = "История изменений"
-	UsersAuditEmpty = "Изменений пока нет."
-	UsersAuditWhen  = "Когда"
-	UsersAuditWho   = "Кто"
-	UsersAuditWhat  = "Что изменилось"
-
 	UsersAuditCreated   = "Пользователь создан"
 	UsersAuditFirstName = "Имя изменено"
 	UsersAuditLastName  = "Фамилия изменена"
@@ -104,9 +114,6 @@ const (
 	UsersAuditOn        = "Доступ включён"
 	UsersAuditPasswd    = "Пароль изменён"
 	UsersAuditReset     = "Пароль сброшен"
-
-	// An action recorded and not named above.
-	UsersAuditOther = "Изменение"
 )
 
 // The screen that shows a first password.
@@ -127,6 +134,9 @@ const (
 	SeasonsNameHint  = "Например, S1."
 	SeasonsStart     = "Начало сезона"
 	SeasonsStartHint = "День, с которого сезон в работе."
+
+	SeasonsAuditCreated = "Сезон создан"
+	SeasonsAuditStart   = "Начало сезона изменено"
 )
 
 // The drops section
@@ -143,6 +153,9 @@ const (
 
 	DropsNoSeason    = "Сначала создайте сезон: дроп существует внутри сезона."
 	DropsSeasonFixed = "Сезон дропа изменить нельзя."
+
+	DropsAuditCreated = "Дроп создан"
+	DropsAuditTarget  = "Плановая дата изменена"
 )
 
 // The models section: the list, the create screen, and the model card.
@@ -182,6 +195,14 @@ const (
 	ModelsPhotoTooLarge = "Файл слишком большой."
 	ModelsPhotoRejected = "Такой файл загрузить нельзя. Подойдёт JPEG, PNG, WebP или GIF."
 	ModelsPhotoOrder    = "Порядок фотографий устарел. Откройте страницу заново."
+)
+
+const (
+	ModelsAuditCreated      = "Модель создана"
+	ModelsAuditArticle      = "Артикул изменён"
+	ModelsAuditPhotoAdded   = "Фото добавлено"
+	ModelsAuditPhotoRemoved = "Фото удалено"
+	ModelsAuditPhotoReorder = "Порядок фотографий изменён"
 )
 
 // The failures in the http middleware chain
