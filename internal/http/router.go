@@ -89,6 +89,18 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("POST "+userPath, root(saveUser(deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+userPassPath, root(resetUserPasswd(deps.AuthSvc)))
 
+	mux.Handle("GET "+seasonsPath, root(showSeasons(deps.CatalogSvc)))
+	mux.Handle("POST "+seasonsPath, root(createSeason(deps.CatalogSvc)))
+	mux.Handle("GET "+seasonNewPath, root(showNewSeason()))
+	mux.Handle("GET "+seasonPath, root(showSeason(deps.CatalogSvc)))
+	mux.Handle("POST "+seasonPath, root(saveSeason(deps.CatalogSvc)))
+
+	mux.Handle("GET "+dropsPath, root(showDrops(deps.CatalogSvc)))
+	mux.Handle("POST "+dropsPath, root(createDrop(deps.CatalogSvc)))
+	mux.Handle("GET "+dropNewPath, root(showNewDrop(deps.CatalogSvc)))
+	mux.Handle("GET "+dropPath, root(showDrop(deps.CatalogSvc)))
+	mux.Handle("POST "+dropPath, root(saveDrop(deps.CatalogSvc)))
+
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;
 	//   - recover inside the logger, so a panicking request still produces its
