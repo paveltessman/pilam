@@ -54,9 +54,9 @@ func TestRosterIsWellFormed(t *testing.T) {
 }
 
 func TestRunWritesTheWholeRoster(t *testing.T) {
-	svc, users, _ := newTestService(t)
+	deps, users, _ := newTestService(t)
 
-	report := run(t, svc, Options{})
+	report := run(t, deps, Options{})
 
 	switch {
 	case report.Users.Created != len(roster):
@@ -87,9 +87,9 @@ func TestRunWritesTheWholeRoster(t *testing.T) {
 }
 
 func TestSeededUserLogsInWithTheOnePassword(t *testing.T) {
-	svc, users, _ := newTestService(t)
+	deps, users, _ := newTestService(t)
 
-	run(t, svc, Options{Users: short, Domain: "example.test"})
+	run(t, deps, Options{Users: short, Domain: "example.test"})
 
 	for _, user := range users.rows {
 		if !strings.HasSuffix(user.Email, "@example.test") {
@@ -110,9 +110,9 @@ func TestSeededUserLogsInWithTheOnePassword(t *testing.T) {
 }
 
 func TestRunWritesOnlyTheEmployeesAskedFor(t *testing.T) {
-	svc, users, _ := newTestService(t)
+	deps, users, _ := newTestService(t)
 
-	report := run(t, svc, Options{Users: short})
+	report := run(t, deps, Options{Users: short})
 
 	if report.Users.Created != short || len(users.rows) != short {
 		t.Errorf("Incorrect count: want=%d, created=%d, stored=%d", short, report.Users.Created, len(users.rows))
@@ -120,12 +120,12 @@ func TestRunWritesOnlyTheEmployeesAskedFor(t *testing.T) {
 }
 
 func TestSecondRunChangesNothing(t *testing.T) {
-	svc, users, _ := newTestService(t)
+	deps, users, _ := newTestService(t)
 
-	run(t, svc, Options{Users: short})
+	run(t, deps, Options{Users: short})
 	first := slices.Collect(maps.Keys(users.rows))
 
-	report := run(t, svc, Options{Users: short})
+	report := run(t, deps, Options{Users: short})
 
 	switch {
 	case report.Users.Created != 0:
@@ -155,8 +155,8 @@ func TestTwoRunsWriteTheSameIdentifiers(t *testing.T) {
 func identifiers(t *testing.T) []ids.ID {
 	t.Helper()
 
-	svc, users, _ := newTestService(t)
-	run(t, svc, Options{Users: short})
+	deps, users, _ := newTestService(t)
+	run(t, deps, Options{Users: short})
 	return slices.Collect(maps.Keys(users.rows))
 }
 
@@ -170,19 +170,16 @@ func sameIDs(a, b []ids.ID) bool {
 }
 
 func TestEverySeededWriteLeavesATrailEntry(t *testing.T) {
-	svc, _, recorder := newTestService(t)
+	deps, _, recorder := newTestService(t)
 
-	run(t, svc, Options{Users: short})
+	run(t, deps, Options{Users: short})
 
 	created := 0
 	for _, entry := range recorder.entries {
-		if entry.Entity != audit.EntityUser {
-			t.Errorf("Incorrect entity in the trail: %q", entry.Entity)
-		}
 		if entry.ActorID == ids.Nil {
 			t.Error("A trail entry names no actor")
 		}
-		if entry.Action == audit.ActionCreated {
+		if entry.Entity == audit.EntityUser && entry.Action == audit.ActionCreated {
 			created++
 		}
 	}
@@ -201,9 +198,9 @@ func TestRunRefusesOptionsItCantWorkFrom(t *testing.T) {
 
 	for name, opts := range cases {
 		t.Run(name, func(t *testing.T) {
-			svc, users, _ := newTestService(t)
+			deps, users, _ := newTestService(t)
 
-			if _, err := Run(t.Context(), svc, opts); err == nil {
+			if _, err := Run(t.Context(), deps, opts); err == nil {
 				t.Error("Run accepted the options")
 			}
 			if len(users.rows) != 0 {
@@ -216,12 +213,15 @@ func TestRunRefusesOptionsItCantWorkFrom(t *testing.T) {
 // The whole demo dataset is created by one administrator, the root the roster
 // opens with. That root is the only user who creates themselves.
 func TestSeededUsersAreCreatedByTheRoot(t *testing.T) {
-	svc, users, recorder := newTestService(t)
+	deps, users, recorder := newTestService(t)
 
-	run(t, svc, Options{Users: short})
+	run(t, deps, Options{Users: short})
 	root := storedUser(t, users, roster[rootAt].email(DefaultDomain))
 
 	for _, entry := range recorder.entries {
+		if entry.Entity != audit.EntityUser {
+			continue
+		}
 		actor, target := entry.ActorID, entry.EntityID
 		if target == root.ID {
 			if actor != root.ID {
@@ -238,13 +238,13 @@ func TestSeededUsersAreCreatedByTheRoot(t *testing.T) {
 // A later run writes the employees the roster grew by. The root of the first
 // run is still the actor, so the whole trail names one administrator.
 func TestALaterRunNamesTheRootOfTheFirst(t *testing.T) {
-	svc, users, recorder := newTestService(t)
+	deps, users, recorder := newTestService(t)
 
-	run(t, svc, Options{Users: short})
+	run(t, deps, Options{Users: short})
 	root := storedUser(t, users, roster[rootAt].email(DefaultDomain))
 	written := len(recorder.entries)
 
-	report := run(t, svc, Options{Users: short + 2})
+	report := run(t, deps, Options{Users: short + 2})
 	if report.Users.Created != 2 {
 		t.Fatalf("The second run wrote %d employees, want 2", report.Users.Created)
 	}

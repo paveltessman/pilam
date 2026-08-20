@@ -9,9 +9,11 @@ import (
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/media"
 	"github.com/paveltessman/pilam/internal/postgres"
 	"github.com/paveltessman/pilam/internal/seed"
 )
@@ -20,6 +22,12 @@ const seedReport = `seed: users
   created:  %d
   skipped:  %d (an earlier run wrote them)
   password: %s
+
+seed: catalog
+  seasons: %d created, %d already there
+  drops:   %d created, %d already there
+  models:  %d created, %d already there
+  photos:  %d written
 
 Every seeded user logs in with that one password.
 `
@@ -32,6 +40,7 @@ func runSeed(ctx context.Context, cfg config.Config, args []string) error {
 func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []string) error {
 	fs := flag.NewFlagSet("seed", flag.ContinueOnError)
 	users := fs.Int("users", 0, "how many employees to write; 0 writes the whole roster")
+	models := fs.Int("models", 0, "how many models to write; 0 writes the whole season")
 	domain := fs.String("domain", seed.DefaultDomain, "the mail domain the addresses are built under")
 	passwd := fs.String("passwd", seed.DefaultPasswd, "the password every seeded user logs in with")
 	if err := fs.Parse(args); err != nil {
@@ -44,22 +53,34 @@ func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 	}
 	defer db.Close()
 
+	mediaStore, err := media.New(cfg.Media)
+	if err != nil {
+		return err
+	}
+
 	clk := clock.New(cfg.Timezone)
 
 	idGen := ids.NewDeterministic(seed.IDSeed)
+	trail := audit.NewTrail(postgres.NewAudit(db), clk, idGen)
 
 	// Nobody is logged in here. The seed writes one root first, and names that
-	// root as the actor of every user after them.
-	authSvc := auth.NewService(
-		postgres.NewUsers(db),
-		db,
-		auth.NewThrottle(clk),
-		idGen,
-		audit.NewTrail(postgres.NewAudit(db), clk, idGen),
-	)
+	// root as the actor of every row after them.
+	deps := seed.Deps{
+		Auth:  auth.NewService(postgres.NewUsers(db), db, auth.NewThrottle(clk), idGen, trail),
+		Clock: clk,
+		Media: mediaStore,
+		Catalog: catalog.NewService(catalog.Stores{
+			Seasons: postgres.NewSeasons(db),
+			Drops:   postgres.NewDrops(db),
+			Models:  postgres.NewModels(db),
+			Photos:  postgres.NewPhotos(db),
+			Atomic:  db,
+		}, idGen, trail),
+	}
 
-	report, err := seed.Run(ctx, authSvc, seed.Options{
+	report, err := seed.Run(ctx, deps, seed.Options{
 		Users:  *users,
+		Models: *models,
 		Domain: *domain,
 		Passwd: *passwd,
 	})
@@ -67,7 +88,14 @@ func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 		return err
 	}
 
-	_, err = fmt.Fprintf(out, seedReport, report.Users.Created, report.Users.Skipped, report.Users.Passwd)
+	rows := report.Catalog
+	_, err = fmt.Fprintf(out, seedReport,
+		report.Users.Created, report.Users.Skipped, report.Users.Passwd,
+		rows.Seasons.Created, rows.Seasons.Skipped,
+		rows.Drops.Created, rows.Drops.Skipped,
+		rows.Models.Created, rows.Models.Skipped,
+		rows.Photos,
+	)
 	if err != nil {
 		return fmt.Errorf("seed: the dataset is loaded, but printing the report failed: %w", err)
 	}
