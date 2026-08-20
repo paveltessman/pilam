@@ -152,7 +152,7 @@ const (
 	DropsTargetHint = "Планируемая дата выхода в продажу. От неё считаются сроки этапов."
 
 	DropsNoSeason    = "Сначала создайте сезон: дроп существует внутри сезона."
-	DropsSeasonFixed = "Сезон дропа изменить нельзя."
+	DropsSeasonFixed = "Сезон дропа."
 
 	DropsAuditCreated = "Дроп создан"
 	DropsAuditTarget  = "Плановая дата изменена"
@@ -173,7 +173,7 @@ const (
 	ModelsArticleHint = "Номер артикула."
 	ModelsDropHint    = "Дроп, в котором выходит модель."
 	ModelsNoDrop      = "Сначала создайте сезон и дроп: модель существует внутри дропа."
-	ModelsSpineFixed  = "Сезон и дроп модели изменить нельзя."
+	ModelsSpineFixed  = "Модель"
 	ModelsFilterState = "Состояние"
 )
 
