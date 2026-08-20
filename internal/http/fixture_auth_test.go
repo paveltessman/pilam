@@ -230,26 +230,25 @@ func (r *recorded) holds(secret string) bool {
 	return false
 }
 
-// auditedAuthService returns the service, and the trail it records to.
-func auditedAuthService(t *testing.T) (*auth.Service, *recorded) {
+// authServiceOn returns the service, recording to the trail given.
+func authServiceOn(t *testing.T, trail *recorded) *auth.Service {
 	t.Helper()
 
 	clk := testClock()
 	gen := ids.NewGenerator()
-	trail := &recorded{}
-	service := auth.NewService(newFakeUsers(), directAtomic{}, auth.NewThrottle(clk), gen,
+	return auth.NewService(newFakeUsers(), directAtomic{}, auth.NewThrottle(clk), gen,
 		audit.NewTrail(trail, clk, gen))
-	return service, trail
 }
 
-// auditedDeps is deps with a trail the test reads back. The service records to
+// auditedDeps is deps with a trail the test reads back. Both services record to
 // it, and the screens read the same trail back through the log.
 func auditedDeps(t *testing.T) (Deps, *recorded) {
 	t.Helper()
 
-	service, trail := auditedAuthService(t)
+	trail := &recorded{}
 	d := baseDeps(t)
-	d.AuthSvc = service
+	d.AuthSvc = authServiceOn(t, trail)
+	d.CatalogSvc = catalogServiceOn(t, trail)
 	d.AuditLog = audit.NewLog(trail, testClock())
 	return d, trail
 }

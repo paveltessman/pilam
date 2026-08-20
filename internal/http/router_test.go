@@ -42,7 +42,7 @@ func baseDeps(t *testing.T) Deps {
 		IDs:        ids.NewGenerator(),
 		Media:      mediaStore(t),
 		SessionMgr: session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
-		CatalogSvc: emptyCatalog(t),
+		CatalogSvc: catalogServiceOn(t, &recorded{}),
 	}
 	return d
 }

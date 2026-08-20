@@ -70,12 +70,15 @@ templ appHeader(chrome Chrome) {
 	</header>
 }
 
-// items is the nav a user of this role sees. The users section is root only, so
-// a member is never offered a link that answers them with a 403.
+// items is the nav a user of this role sees.
 func (c Chrome) items() []navItem {
 	items := []navItem{{Label: labels.NavBoard, Href: "/"}}
 	if c.IsRoot {
-		items = append(items, navItem{Label: labels.NavUsers, Href: "/users"})
+		items = append(items,
+			navItem{Label: labels.NavSeasons, Href: SeasonsPath},
+			navItem{Label: labels.NavDrops, Href: DropsPath},
+			navItem{Label: labels.NavUsers, Href: UsersPath},
+		)
 	}
 	return items
 }

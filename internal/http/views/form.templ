@@ -1,6 +1,9 @@
 package views
 
-import "github.com/paveltessman/pilam/internal/http/views/ui/label"
+import (
+	"github.com/paveltessman/pilam/internal/http/views/ui/label"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
 
 // fieldProps is one input of a form, without the input itself: the label above
 // it, and the one line under it.
@@ -26,5 +29,79 @@ templ formField(f fieldProps) {
 		} else if f.Hint != "" {
 			<p class="text-sm text-muted-foreground">{ f.Hint }</p>
 		}
+	</div>
+}
+
+// formAlert renders a paragraph with the 'alert' role.
+templ formAlert(text string) {
+	if text != "" {
+		<p role="alert" class="mb-6 rounded-md border border-destructive/50 px-3 py-2 text-sm text-destructive">
+			{ text }
+		</p>
+	}
+}
+
+// formNotice renders a paragraph with the 'status' role.
+templ formNotice(text string) {
+	if text != "" {
+		<p role="status" class="mb-6 rounded-md border border-primary/50 bg-primary/5 px-3 py-2 text-sm text-foreground">
+			{ text }
+		</p>
+	}
+}
+
+// selectOption is one choice of a select box: the value it posts, and the text
+// the user reads.
+type selectOption struct {
+	Value string
+	Label string
+}
+
+// selectBox is the one select every form uses.
+templ selectBox(name string, options []selectOption, current string, hasError bool) {
+	<select
+		id={ name }
+		name={ name }
+		if hasError {
+			aria-invalid="true"
+			class="flex h-9 w-full rounded-md border border-destructive bg-transparent px-3 py-1 text-base shadow-xs outline-none md:text-sm"
+		} else {
+			class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm"
+		}
+	>
+		for _, option := range options {
+			<option value={ option.Value } selected?={ option.Value == current }>{ option.Label }</option>
+		}
+	</select>
+}
+
+// activeBox is the flag a catalog record carries.
+templ activeBox(name string, checked bool) {
+	<label class="flex items-center gap-2 text-sm font-medium">
+		<input
+			type="checkbox"
+			id={ name }
+			name={ name }
+			value="true"
+			checked?={ checked }
+			class="size-4 rounded border border-input accent-primary"
+		/>
+		{ labels.StateActive }
+	</label>
+}
+
+// stateCell is the `active` flag as a list column reads it.
+templ stateCell(active bool) {
+	if active {
+		<span class="text-muted-foreground">{ labels.StateActive }</span>
+	} else {
+		<span class="text-destructive">{ labels.StateInactive }</span>
+	}
+}
+
+// emptyPanel is what a list shows in place of a table it has no rows for.
+templ emptyPanel(text string) {
+	<div class="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+		<p>{ text }</p>
 	</div>
 }

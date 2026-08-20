@@ -91,9 +91,7 @@ templ usersSearch(query string) {
 // and a search request answers with it and nothing else.
 templ UsersResults(page UsersPage) {
 	if len(page.Users) == 0 {
-		<div class="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-			<p>{ page.EmptyText() }</p>
-		</div>
+		@emptyPanel(page.EmptyText())
 	} else {
 		<div class="overflow-x-auto rounded-lg border">
 			<table class="w-full text-sm">
@@ -217,16 +215,8 @@ templ User(form UserForm) {
 	@Page(form.Title(), form.Chrome) {
 		<main class="mx-auto w-full max-w-xl px-6 py-10">
 			<h1 class="mb-6 text-2xl font-semibold tracking-tight">{ form.Title() }</h1>
-			if form.Alert != "" {
-				<p role="alert" class="mb-6 rounded-md border border-destructive/50 px-3 py-2 text-sm text-destructive">
-					{ form.Alert }
-				</p>
-			}
-			if form.Notice != "" {
-				<p role="status" class="mb-6 rounded-md border border-primary/50 bg-primary/5 px-3 py-2 text-sm text-foreground">
-					{ form.Notice }
-				</p>
-			}
+			@formAlert(form.Alert)
+			@formNotice(form.Notice)
 			<form method="post" action={ templ.SafeURL(form.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
 				@formField(fieldProps{Name: FieldEmail, Label: labels.UsersEmail, Message: messages[FieldEmail]}) {
 					if form.IsNew() {
@@ -332,20 +322,16 @@ templ userAudit(events []UserEvent) {
 }
 
 templ roleSelect(current auth.Role, hasError bool) {
-	<select
-		id={ FieldUserRole }
-		name={ FieldUserRole }
-		if hasError {
-			aria-invalid="true"
-			class="flex h-9 w-full rounded-md border border-destructive bg-transparent px-3 py-1 text-base shadow-xs outline-none md:text-sm"
-		} else {
-			class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] md:text-sm"
-		}
-	>
-		for _, role := range roleOptions {
-			<option value={ string(role) } selected?={ role == current }>{ roleLabel(role) }</option>
-		}
-	</select>
+	@selectBox(FieldUserRole, roleChoices(), string(current), hasError)
+}
+
+// roleChoices is the role select, in the order it is offered.
+func roleChoices() []selectOption {
+	choices := make([]selectOption, len(roleOptions))
+	for i, role := range roleOptions {
+		choices[i] = selectOption{Value: string(role), Label: roleLabel(role)}
+	}
+	return choices
 }
 
 // UserPasswdPage shows a first password once. Nothing stores the plain text, so
