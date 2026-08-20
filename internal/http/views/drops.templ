@@ -129,6 +129,10 @@ type DropForm struct {
 	Alert      string
 	Notice     string
 	Errors     validate.FieldErrors
+
+	// Trail is what the audit log holds about this drop, newest first. The
+	// create screen has none, because the drop is not there yet.
+	Trail []AuditEvent
 }
 
 // NewDropForm is the form of a drop that already exists, inside the season that
@@ -242,6 +246,9 @@ templ Drop(form DropForm) {
 					{ labels.ActionBackToList }
 				}
 			</div>
+			if !form.IsNew() {
+				@auditTrail(form.Trail)
+			}
 		</main>
 	}
 }

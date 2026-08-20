@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/http/views"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -120,15 +122,22 @@ func createDrop(catalogSvc *catalog.Service) http.HandlerFunc {
 	return handler
 }
 
-// showDrop renders the edit form of one drop.
-func showDrop(catalogSvc *catalog.Service) http.HandlerFunc {
+// showDrop renders the edit form of one drop, and the audit trail of that drop
+// under it.
+func showDrop(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		drop, season, ok := loadDrop(w, r, catalogSvc)
 		if !ok {
 			return
 		}
 
+		trail, ok := loadTrail(w, r, authSvc, log, audit.EntityDrop, drop.ID)
+		if !ok {
+			return
+		}
+
 		form := views.NewDropForm(chrome(r.Context()), drop, season)
+		form.Trail = trail
 		if isSaved(r) {
 			form.Notice = labels.Saved
 		}
@@ -138,7 +147,7 @@ func showDrop(catalogSvc *catalog.Service) http.HandlerFunc {
 }
 
 // saveDrop writes the name, the target date and the active flag.
-func saveDrop(catalogSvc *catalog.Service) http.HandlerFunc {
+func saveDrop(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -176,8 +185,15 @@ func saveDrop(catalogSvc *catalog.Service) http.HandlerFunc {
 			return
 		}
 
+		// The screen comes back whole: the refusal, and the trail under it.
+		trail, ok := loadTrail(w, r, authSvc, log, audit.EntityDrop, drop.ID)
+		if !ok {
+			return
+		}
+
 		logger.Info("drop update rejected", "drop", drop.ID, "reason", errs)
 		form.Errors = errs
+		form.Trail = trail
 		render(w, r, http.StatusUnprocessableEntity, views.Drop(form))
 	}
 	return handler

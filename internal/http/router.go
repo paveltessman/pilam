@@ -83,10 +83,10 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+modelsPath, guard(showModels(deps.CatalogSvc, deps.Media)))
 	mux.Handle("POST "+modelsPath, guard(createModel(deps.CatalogSvc)))
 	mux.Handle("GET "+modelNewPath, guard(showNewModel(deps.CatalogSvc)))
-	mux.Handle("GET "+modelPath, guard(showModel(deps.CatalogSvc, deps.Media)))
-	mux.Handle("POST "+modelPath, guard(saveModel(deps.CatalogSvc, deps.Media)))
-	mux.Handle("POST "+modelPhotosPath, guard(addModelPhotos(deps.CatalogSvc, deps.Media)))
-	mux.Handle("POST "+modelOrderPath, guard(reorderModelPhotos(deps.CatalogSvc, deps.Media)))
+	mux.Handle("GET "+modelPath, guard(showModel(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+modelPath, guard(saveModel(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+modelPhotosPath, guard(addModelPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+modelOrderPath, guard(reorderModelPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
 	mux.Handle("POST "+modelPhotoPath, guard(removeModelPhoto(deps.CatalogSvc)))
 
 	// S5, the users section. Root only: a member gets a 403 on every route of
@@ -102,14 +102,14 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+seasonsPath, root(showSeasons(deps.CatalogSvc)))
 	mux.Handle("POST "+seasonsPath, root(createSeason(deps.CatalogSvc)))
 	mux.Handle("GET "+seasonNewPath, root(showNewSeason()))
-	mux.Handle("GET "+seasonPath, root(showSeason(deps.CatalogSvc)))
-	mux.Handle("POST "+seasonPath, root(saveSeason(deps.CatalogSvc)))
+	mux.Handle("GET "+seasonPath, root(showSeason(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+seasonPath, root(saveSeason(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
 	mux.Handle("GET "+dropsPath, root(showDrops(deps.CatalogSvc)))
 	mux.Handle("POST "+dropsPath, root(createDrop(deps.CatalogSvc)))
 	mux.Handle("GET "+dropNewPath, root(showNewDrop(deps.CatalogSvc)))
-	mux.Handle("GET "+dropPath, root(showDrop(deps.CatalogSvc)))
-	mux.Handle("POST "+dropPath, root(saveDrop(deps.CatalogSvc)))
+	mux.Handle("GET "+dropPath, root(showDrop(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+dropPath, root(saveDrop(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;

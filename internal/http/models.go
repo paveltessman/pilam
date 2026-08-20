@@ -6,6 +6,8 @@ import (
 	"mime/multipart"
 	"net/http"
 
+	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/views"
@@ -138,10 +140,11 @@ func createModel(catalogSvc *catalog.Service) http.HandlerFunc {
 	return handler
 }
 
-// showModel renders the screen header of one model.
-func showModel(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
+// showModel renders the screen header of one model, and the audit trail of that
+// model under it.
+func showModel(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		card, ok := modelCard(w, r, catalogSvc, store)
+		card, ok := modelCard(w, r, catalogSvc, authSvc, log, store)
 		if !ok {
 			return
 		}
@@ -154,7 +157,7 @@ func showModel(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc 
 }
 
 // saveModel writes the article and the active flag.
-func saveModel(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
+func saveModel(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -182,7 +185,7 @@ func saveModel(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc 
 			return
 		}
 
-		card, ok := modelCard(w, r, catalogSvc, store)
+		card, ok := modelCard(w, r, catalogSvc, authSvc, log, store)
 		if !ok {
 			return
 		}
@@ -200,7 +203,7 @@ func saveModel(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc 
 //
 // One refused file stops the upload there. The files stored before it keep
 // their place on the strip, because each photo is a write of its own.
-func addModelPhotos(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
+func addModelPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -212,7 +215,7 @@ func addModelPhotos(catalogSvc *catalog.Service, store media.Store) http.Handler
 
 		if err := r.ParseMultipartForm(photoUploadMemory); err != nil {
 			logger.Info("the upload is not a readable form", "model", model.ID, "err", err)
-			refusePhotos(w, r, catalogSvc, store, labels.ModelsPhotoNone)
+			refusePhotos(w, r, catalogSvc, authSvc, log, store, labels.ModelsPhotoNone)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
@@ -220,7 +223,7 @@ func addModelPhotos(catalogSvc *catalog.Service, store media.Store) http.Handler
 		files := r.MultipartForm.File[views.FieldModelPhoto]
 		if len(files) == 0 {
 			logger.Info("the upload names no file", "model", model.ID)
-			refusePhotos(w, r, catalogSvc, store, labels.ModelsPhotoNone)
+			refusePhotos(w, r, catalogSvc, authSvc, log, store, labels.ModelsPhotoNone)
 			return
 		}
 
@@ -229,7 +232,7 @@ func addModelPhotos(catalogSvc *catalog.Service, store media.Store) http.Handler
 			switch {
 			case alert != "":
 				logger.Info("photo refused", "model", model.ID, "file", file.Filename, "err", err)
-				refusePhotos(w, r, catalogSvc, store, alert)
+				refusePhotos(w, r, catalogSvc, authSvc, log, store, alert)
 				return
 			case err != nil:
 				logger.Error("storing a photo failed", "model", model.ID, "file", file.Filename, "err", err)
@@ -316,7 +319,7 @@ func removeModelPhoto(catalogSvc *catalog.Service) http.HandlerFunc {
 
 // reorderModelPhotos writes the strip in the posted order. The first
 // identifier becomes the cover.
-func reorderModelPhotos(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
+func reorderModelPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -340,7 +343,7 @@ func reorderModelPhotos(catalogSvc *catalog.Service, store media.Store) http.Han
 			// The order names a strip the model no longer holds, which is a
 			// screen the user opened before somebody else changed it.
 			logger.Info("photo order refused", "model", model.ID, "err", err)
-			refusePhotos(w, r, catalogSvc, store, labels.ModelsPhotoOrder)
+			refusePhotos(w, r, catalogSvc, authSvc, log, store, labels.ModelsPhotoOrder)
 			return
 
 		default:
@@ -352,8 +355,16 @@ func reorderModelPhotos(catalogSvc *catalog.Service, store media.Store) http.Han
 }
 
 // refusePhotos renders the card again with the alert the refusal reads as.
-func refusePhotos(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Service, store media.Store, alert string) {
-	card, ok := modelCard(w, r, catalogSvc, store)
+func refusePhotos(
+	w http.ResponseWriter,
+	r *http.Request,
+	catalogSvc *catalog.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+	alert string,
+) {
+	card, ok := modelCard(w, r, catalogSvc, authSvc, log, store)
 	if !ok {
 		return
 	}
@@ -361,9 +372,17 @@ func refusePhotos(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Se
 	render(w, r, http.StatusUnprocessableEntity, views.Model(card))
 }
 
-// modelCard reads everything the model screen header shows. It answers itself and reports
-// false when the model is not there or cannot be read.
-func modelCard(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Service, store media.Store) (views.ModelCard, bool) {
+// modelCard reads everything the model screen shows: the header, the photo
+// strip, and the audit trail under them. It answers itself and reports false
+// when the model is not there or cannot be read.
+func modelCard(
+	w http.ResponseWriter,
+	r *http.Request,
+	catalogSvc *catalog.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+) (views.ModelCard, bool) {
 	ctx := r.Context()
 
 	model, drop, season, ok := loadModel(w, r, catalogSvc)
@@ -378,6 +397,11 @@ func modelCard(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Servi
 		return views.ModelCard{}, false
 	}
 
+	trail, ok := loadTrail(w, r, authSvc, log, audit.EntityModel, model.ID)
+	if !ok {
+		return views.ModelCard{}, false
+	}
+
 	card := views.ModelCard{
 		Chrome:  chrome(ctx),
 		ModelID: model.ID.String(),
@@ -386,6 +410,7 @@ func modelCard(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Servi
 		Season:  season,
 		Drop:    drop,
 		Photos:  views.NewModelStrip(photos, store.URL),
+		Trail:   trail,
 	}
 	return card, true
 }

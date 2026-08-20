@@ -330,3 +330,58 @@ func TestNavOffersTheCatalogSectionsToARootAlone(t *testing.T) {
 		}
 	}
 }
+
+// The card of one season carries what the trail recorded about that season:
+// when, who, and what changed.
+func TestSeasonCardShowsTheAuditTrail(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	id := createdSeason(t, d, cookie, "S1", "2026-11-01")
+	path := seasonsPath + "/" + id
+
+	rec := postAs(t, d, path, seasonForm("SS28", "2026-12-01", false), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	body := getAs(t, d, path, cookie).Body.String()
+	name := labels.AuditName + ": S1 → SS28"
+	start := labels.SeasonsAuditStart + ": 01.11.2026 → 01.12.2026"
+
+	wants(t, body,
+		labels.AuditTitle,
+		labels.DateTime(testNow),
+		labels.Name("Barbara", "Liskov"),
+		labels.SeasonsAuditCreated,
+		labels.AuditOff,
+		name,
+		start,
+	)
+
+	// Newest first: the create is the oldest of the four entries.
+	if strings.Index(body, labels.SeasonsAuditCreated) < strings.Index(body, name) {
+		t.Error("the trail does not show the newest change first")
+	}
+	// The flag says nothing the action does not.
+	for _, unwanted := range []string{"true", "false"} {
+		if strings.Contains(body, ": "+unwanted) {
+			t.Errorf("the trail on the card reads out the stored value %q", unwanted)
+		}
+	}
+}
+
+// A refused edit comes back with the trail still under the form.
+func TestRefusedSeasonEditKeepsTheTrailOnTheCard(t *testing.T) {
+	d := deps(t)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	id := createdSeason(t, d, cookie, "S1", "2026-11-01")
+	path := seasonsPath + "/" + id
+
+	rec := postAs(t, d, path, seasonForm("", "2026-11-01", true), cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+	wants(t, rec.Body.String(), labels.AuditTitle, labels.SeasonsAuditCreated)
+}

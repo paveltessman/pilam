@@ -666,3 +666,41 @@ func TestModelScreensAnswer404ForAModelThatIsNotThere(t *testing.T) {
 		}
 	}
 }
+
+// The card of one model carries what the trail recorded about that model.
+func TestModelCardShowsTheAuditTrail(t *testing.T) {
+	d := deps(t)
+	dropID := spine(t, d)
+	cookie := loggedIn(t, d, rootEmail, rootPasswd)
+
+	id := createdModel(t, d, cookie, dropID, "A-100")
+	path := modelsPath + "/" + id
+
+	if rec := upload(t, d, path+"/photos", []string{pngUpload + "1"}, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("upload status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+	if rec := postAs(t, d, path, modelForm(dropID, "A-200", true), cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("edit status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	body := getAs(t, d, path, cookie).Body.String()
+	article := labels.ModelsAuditArticle + ": A-100 → A-200"
+
+	wants(t, body,
+		labels.AuditTitle,
+		labels.DateTime(testNow),
+		labels.Name("Barbara", "Liskov"),
+		labels.ModelsAuditCreated,
+		labels.ModelsAuditPhotoAdded,
+		article,
+	)
+
+	// Newest first: the create is the oldest of the three entries.
+	if strings.Index(body, labels.ModelsAuditCreated) < strings.Index(body, article) {
+		t.Error("the trail does not show the newest change first")
+	}
+	// The media key names a file, and the trail reads the action alone.
+	if key := coverOf(t, d, cookie, id); key == "" || strings.Contains(body, ": "+key) {
+		t.Errorf("the trail on the card reads out the media key %q", key)
+	}
+}
