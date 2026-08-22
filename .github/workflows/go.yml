@@ -1,0 +1,55 @@
+name: Go
+
+on:
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+
+concurrency:
+  group: go-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: vet, test, lint
+    runs-on: ubuntu-latest
+
+    # The transaction runner and the migrations can only be checked against a
+    # real server.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: pilam
+          POSTGRES_PASSWORD: pilam
+          POSTGRES_DB: pilam
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pilam -d pilam"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+
+    env:
+      TEST_DATABASE_URL: postgres://pilam:pilam@localhost:5432/pilam?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - uses: actions/cache@v4
+        with:
+          path: bin/tailwindcss
+          key: tailwind-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      # generate + css + go vet + go test + golangci-lint run.
+      - run: make check

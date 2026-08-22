@@ -1,114 +1,56 @@
 # Implementation Plan: milestones
 
-This plan orders the work of `docs/v1/milestones/feature.md` into phases.
+---
+
+## PRs
+
+### PR1 — Milestone types
+
+A root user creates a milestone type, renames it, and retires it.
+
+One migration adds the milestone type table with the two unique indexes on the short name and the description. The service holds the writes, and every write lands in the audit trail.
+
+**Done when:** A root user creates a type, a member cannot reach the screen, and a retired type keeps its row.
 
 ---
 
-## Where the code goes
+### PR2 — Milestone templates
 
-The feature follows the layers of `docs/v1/architecture.md`. It adds one domain package and touches four places that already exist.
+A root user builds an ordered list of types with their offsets.
 
-| Place | Role |
-| ----- | ---- |
-| `internal/calendar` | The new domain package. Milestone types, templates, milestones, and the rules of §4 to §7. |
-| `internal/postgres` | The queries behind the ports of `calendar`. |
-| `db/migrations` | One migration for the four new tables. |
-| `internal/http` | The handlers and the views of the five screens of §8. |
-| `internal/seed` | The default template of §10, and the demo calendars. |
+One migration adds the template and the template item. The constraints carry the decisions of the feature: one type appears once per template, an offset is zero or negative, and at most one template is the default. The order index is deferrable, like `model_photo`, because a reorder swaps two rows.
 
-The `catalog` package keeps its own job. A model does not know about its milestones. The screens join the two packages at the handler.
+The template item has no screen of its own, so the trail records its changes under the template.
 
----
+The template editor of carries the two columns, the offset and the gap, and the date preview beside them. The gap is the days to the item above, the offset is the days from the target date of the drop, and the app stores the offset.
 
-## Phases
+The preview needs the first pure rule of the package. A template applied to a target date gives one milestone per template item, with the baseline date and the plan date both equal to the target date plus the offset.
 
-### M0 — The schema
-
-One migration for the milestone type, the milestone template, the template item, and the milestone. The queries and the generated code that go with it.
-
-The constraints carry the decisions of the feature. A model holds one milestone per type, an offset is zero or negative, and a fact date is not in the future.
-
-**Done when:** the migration runs up and down.
+**Done when:** A root user builds a template from nothing, edits either the offset or the gap, reorders the rows, and the preview shows the dates the template produces from a target date.
 
 ---
 
-### M1 — The pure kernel
+### PR3 — Milestone section on the model screen
 
-The rules of the feature, inside `internal/calendar`, with no database and no clock. A function that needs the current day takes it as an argument.
+The milestone section appears on the model screen. That section holds one row per milestone in plan date order, with the columns type, baseline, plan, fact, state, and slip in days. A late row carries a marker.
 
-This phase covers four things:
+One migration adds the milestone table. A model holds one milestone per type, a note is 500 characters at most.
 
-- The template applied to a target date, which gives the dates of §6.
-- The derived state of one milestone and the roll-up of a model, a drop, and a season, from §5.
-- The cascade of §7.1, which returns the list of milestones that move.
-- The drop shift of §7.3, which moves the baseline and the plan together.
+The service holds four writes:
 
-**Done when:** table-driven tests cover the four rules, including a milestone that holds a fact date, a model with no calendar, and a plan date that moves earlier.
+- Apply a template to a model. The dates come from the target date of the drop and the offsets, and the baseline date and the plan date start equal.
+- Apply a template to a model that already holds a calendar. It adds only the missing types and never touches a date.
+- Add one milestone of a type the model lacks.
+- Edit one row: the plan date, the fact date, the note, and the active flag.
 
----
-
-### M2 — The service and the storage
-
-The kernel gets a database and an audit trail. The service holds the writes a member and a root user make.
-
-Every write lands in one transaction with its audit entries, the way `catalog` already does it. A drop shift writes one entry per milestone it moves, and the request id groups them.
-
-**Done when:** the service tests prove the actions of §9, the audit trail holds the old value and the new value of every date move, and the baseline stays still on an ordinary edit.
+An edit of a plan date here moves that one milestone. The cascade of §7.1, where a plan date that moves later pushes the later milestones of the same model, arrives in later  PRs.
 
 ---
 
-### M3 — The seed
+### PR4 — The seed
 
-The default template of §10, the calendars of the seeded models, and the facts a real season would already hold.
-
-**Done when:** a seeded database leaves 8 to 12 models late, spread unevenly across the drops, and a test asserts that number.
+The demo data, with its 15 items and their offsets from -270 to -7 days, the calendars of the seeded models, and the facts a real season would already hold.
 
 ---
 
-### M4 — The admin screens
-
-The milestone types of §8.3 and the templates of §8.4. A root user reaches both.
-
-The template editor carries the two columns of §3.2, the offset and the gap, and the date preview beside them.
-
-**Done when:** a root user builds a template from nothing, and the preview shows the dates it produces from a target date.
-
----
-
-### M5 — The model screen
-
-The calendar section of §8.1, and the template field on model create from §8.5.
-
-This phase brings the confirm dialog of §7.1 to the screen. The user sees the milestones that move before the app writes anything.
-
-**Done when:** demo steps 2 and 3 of §13 run. A new model shows 15 dated milestones, and one plan date that moves 10 days later carries the later milestones with it.
-
----
-
-### M6 — The milestone list
-
-The season-wide screen of §8.2. The filters, the grouping, the selection, the two bulk actions of §7.2, and the CSV export.
-
-**Done when:** demo steps 4 and 5 of §13 run. A model that passed its plan date yesterday shows as late this morning, and one action marks four color-models done.
-
----
-
-### M7 — The roll-ups
-
-The state line of §5 on the drop screen and the season screen, and the drop shift of §7.3 on the drop screen.
-
-**Done when:** demo step 6 of §13 runs. A drop moves 14 days, the user confirms, and the assortment stops being late.
-
----
-
-## What each phase must settle
-
-The feature document leaves these open. The phase that meets one decides it and writes the reason down.
-
-**M0.** Where the baseline rule lives. The database can hold it, or the service can. The choice decides how much of §4 a query can break.
-
-**M1.** What the cascade returns. The confirm dialog of §7.1 needs the list before the write, so the same call serves the preview and the write.
-
-**M2.** How the app applies a template to a model that already holds one. Section §6 says it adds only the missing types, and never touches a date.
-
-**M5 and M6.** How much of the calendar section and the milestone list share a view. Both show a milestone row with the same columns and the same actions.
+The next PRs will be planned later.
