@@ -86,7 +86,7 @@ func (s *Service) CreateSeason(ctx context.Context, in SeasonCreateParams) (Seas
 		if err := s.seasons.Create(ctx, season); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntitySeason, season.ID, audit.ActionCreated, "", "", season.Name))
+		return s.RecordTrail(ctx, change(audit.EntitySeason, season.ID, audit.ActionCreated, "", "", season.Name))
 	}
 	if err := s.atomic.InTx(ctx, write); err != nil {
 		return Season{}, err
@@ -135,7 +135,7 @@ func (s *Service) UpdateSeason(ctx context.Context, seasonID ids.ID, in SeasonUp
 		if err := s.seasons.Update(ctx, season); err != nil {
 			return err
 		}
-		return s.record(ctx, changes...)
+		return s.RecordTrail(ctx, changes...)
 	})
 	return err
 }

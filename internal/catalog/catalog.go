@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/paveltessman/pilam/internal/audit"
-	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/platform/date"
 	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/shared"
 )
 
 const (
@@ -42,13 +42,13 @@ type Atomic interface {
 }
 
 type Service struct {
+	shared.BaseService
 	seasons Seasons
 	drops   Drops
 	models  Models
 	photos  Photos
 	atomic  Atomic
 	ids     ids.Generator
-	trail   *audit.Trail
 }
 
 // Stores is what the service reads and writes through.
@@ -75,17 +75,15 @@ func NewService(stores Stores, gen ids.Generator, trail *audit.Trail) *Service {
 		panic("catalog: nil transaction runner")
 	case gen == nil:
 		panic("catalog: nil id generator")
-	case trail == nil:
-		panic("catalog: nil audit trail")
 	}
 	service := &Service{
-		seasons: stores.Seasons,
-		drops:   stores.Drops,
-		models:  stores.Models,
-		photos:  stores.Photos,
-		atomic:  stores.Atomic,
-		ids:     gen,
-		trail:   trail,
+		BaseService: shared.NewBaseService(trail),
+		seasons:     stores.Seasons,
+		drops:       stores.Drops,
+		models:      stores.Models,
+		photos:      stores.Photos,
+		atomic:      stores.Atomic,
+		ids:         gen,
 	}
 	return service
 }
@@ -101,15 +99,6 @@ func change(entity string, entityID ids.ID, action, field, old, next string) aud
 		New:      next,
 	}
 	return c
-}
-
-// record hands the changes to the trail, under the user the request is
-// authenticated as.
-//
-// A context with no identity carries no actor, and the trail refuses the entry.
-func (s *Service) record(ctx context.Context, changes ...audit.Change) error {
-	identity, _ := auth.FromContext(ctx)
-	return s.trail.Record(ctx, identity.UserID, changes...)
 }
 
 func day(t time.Time) time.Time { return date.Of(t.Date()) }

@@ -97,7 +97,7 @@ func (s *Service) CreateModel(ctx context.Context, in ModelCreateParams) (Model,
 		if err := s.models.Create(ctx, model); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntityModel, model.ID, audit.ActionCreated, "", "", model.Article))
+		return s.RecordTrail(ctx, change(audit.EntityModel, model.ID, audit.ActionCreated, "", "", model.Article))
 	}
 	if err := s.atomic.InTx(ctx, write); err != nil {
 		return Model{}, err
@@ -139,6 +139,6 @@ func (s *Service) UpdateModel(ctx context.Context, modelID ids.ID, in ModelUpdat
 		if err := s.models.Update(ctx, model); err != nil {
 			return err
 		}
-		return s.record(ctx, changes...)
+		return s.RecordTrail(ctx, changes...)
 	})
 }

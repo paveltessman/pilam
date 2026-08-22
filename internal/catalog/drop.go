@@ -95,7 +95,7 @@ func (s *Service) CreateDrop(ctx context.Context, in DropCreateParams) (Drop, er
 		if err := s.drops.Create(ctx, drop); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntityDrop, drop.ID, audit.ActionCreated, "", "", drop.Name))
+		return s.RecordTrail(ctx, change(audit.EntityDrop, drop.ID, audit.ActionCreated, "", "", drop.Name))
 	}
 	if err := s.atomic.InTx(ctx, write); err != nil {
 		return Drop{}, err
@@ -144,6 +144,6 @@ func (s *Service) UpdateDrop(ctx context.Context, dropID ids.ID, in DropUpdatePa
 		if err := s.drops.Update(ctx, drop); err != nil {
 			return err
 		}
-		return s.record(ctx, changes...)
+		return s.RecordTrail(ctx, changes...)
 	})
 }
