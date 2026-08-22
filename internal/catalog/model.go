@@ -127,7 +127,7 @@ func (s *Service) UpdateModel(ctx context.Context, modelID ids.ID, in ModelUpdat
 		model.Article = article
 	}
 	if in.Active != model.Active {
-		changes = append(changes, change(audit.EntityModel, model.ID, activation(in.Active), FieldActive,
+		changes = append(changes, change(audit.EntityModel, model.ID, audit.Activation(in.Active), FieldActive,
 			strconv.FormatBool(model.Active), strconv.FormatBool(in.Active)))
 		model.Active = in.Active
 	}

@@ -132,7 +132,7 @@ func (s *Service) UpdateDrop(ctx context.Context, dropID ids.ID, in DropUpdatePa
 		drop.TargetDate = target
 	}
 	if in.Active != drop.Active {
-		changes = append(changes, change(audit.EntityDrop, drop.ID, activation(in.Active), FieldActive,
+		changes = append(changes, change(audit.EntityDrop, drop.ID, audit.Activation(in.Active), FieldActive,
 			strconv.FormatBool(drop.Active), strconv.FormatBool(in.Active)))
 		drop.Active = in.Active
 	}

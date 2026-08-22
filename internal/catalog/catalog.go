@@ -103,14 +103,6 @@ func change(entity string, entityID ids.ID, action, field, old, next string) aud
 	return c
 }
 
-// activation names the action an `active` flag move makes.
-func activation(active bool) string {
-	if active {
-		return audit.ActionReactivated
-	}
-	return audit.ActionDeactivated
-}
-
 // record hands the changes to the trail, under the user the request is
 // authenticated as.
 //

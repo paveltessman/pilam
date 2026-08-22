@@ -123,7 +123,7 @@ func (s *Service) UpdateSeason(ctx context.Context, seasonID ids.ID, in SeasonUp
 		season.StartDate = start
 	}
 	if in.Active != season.Active {
-		changes = append(changes, change(audit.EntitySeason, season.ID, activation(in.Active), FieldActive,
+		changes = append(changes, change(audit.EntitySeason, season.ID, audit.Activation(in.Active), FieldActive,
 			strconv.FormatBool(season.Active), strconv.FormatBool(in.Active)))
 		season.Active = in.Active
 	}
