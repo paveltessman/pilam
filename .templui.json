@@ -1,6 +1,6 @@
 {
-  "componentsDir": "internal/http/views/ui",
-  "utilsDir": "internal/http/views/utils",
+  "componentsDir": "internal/http/shared/ui",
+  "utilsDir": "internal/http/shared/utils",
   "moduleName": "github.com/paveltessman/pilam",
   "jsDir": "internal/http/static/js",
   "jsPublicPath": "/static/js"

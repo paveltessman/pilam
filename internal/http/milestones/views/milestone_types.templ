@@ -1,0 +1,176 @@
+// Package views holds the screens of the milestone section.
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
+	shared "github.com/paveltessman/pilam/internal/http/shared/views"
+	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+	"github.com/paveltessman/pilam/internal/platform/validate"
+)
+
+const (
+	FieldMilestoneTypeName        = "name"
+	FieldMilestoneTypeDescription = "description"
+	FieldMilestoneTypeActive      = "active"
+)
+
+// MilestoneTypesPage is the list: every type, active and retired, by short name.
+type MilestoneTypesPage struct {
+	Chrome shared.Chrome
+	Types  []milestone.Type
+}
+
+templ MilestoneTypes(page MilestoneTypesPage) {
+	{{ page.Chrome.Current = labels.MilestoneTypesTitle }}
+	@shared.Page(labels.MilestoneTypesTitle, page.Chrome) {
+		<main class="mx-auto w-full max-w-5xl px-6 py-10">
+			<div class="mb-6 flex items-center gap-4">
+				<h1 class="text-2xl font-semibold tracking-tight">{ labels.MilestoneTypesTitle }</h1>
+				@button.Button(button.Props{Href: paths.MilestoneTypes + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
+					{ labels.ActionAddMilestoneType }
+				}
+			</div>
+			if len(page.Types) == 0 {
+				@shared.EmptyPanel(labels.MilestoneTypesEmpty)
+			} else {
+				<div class="overflow-x-auto rounded-lg border">
+					<table class="w-full text-sm">
+						<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+							<tr>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.MilestoneTypesName }</th>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.MilestoneTypesDescription }</th>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.StateColumn }</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, milestoneType := range page.Types {
+								@milestoneTypeRow(milestoneType)
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</main>
+	}
+}
+
+templ milestoneTypeRow(milestoneType milestone.Type) {
+	<tr class="border-b last:border-0 hover:bg-muted/50">
+		<td class="px-4 py-3 whitespace-nowrap">
+			<a href={ templ.SafeURL(paths.MilestoneTypes + "/" + milestoneType.ID.String()) } class="font-medium underline-offset-4 hover:underline">
+				{ milestoneType.Name }
+			</a>
+		</td>
+		<td class="px-4 py-3 text-muted-foreground">{ milestoneType.Description }</td>
+		<td class="px-4 py-3">
+			@shared.StateCell(milestoneType.Active)
+		</td>
+	</tr>
+}
+
+// MilestoneTypeForm is the create screen and the edit screen. They differ in one
+// control: a type that exists carries the `active` flag, and a new one is always
+// active.
+type MilestoneTypeForm struct {
+	Chrome      shared.Chrome
+	TypeID      string
+	Name        string
+	Description string
+	Active      bool
+	Alert       string
+	Notice      string
+	Errors      validate.FieldErrors
+
+	// Trail is what the audit log holds about this type, newest first. The
+	// create screen has none, because the type is not there yet.
+	Trail []shared.AuditEvent
+}
+
+// NewMilestoneTypeForm is the form of a milestone type that already exists.
+func NewMilestoneTypeForm(chrome shared.Chrome, milestoneType milestone.Type) MilestoneTypeForm {
+	form := MilestoneTypeForm{
+		Chrome:      chrome,
+		TypeID:      milestoneType.ID.String(),
+		Name:        milestoneType.Name,
+		Description: milestoneType.Description,
+		Active:      milestoneType.Active,
+	}
+	return form
+}
+
+// IsNew reports whether the form creates a type rather than editing one.
+func (f MilestoneTypeForm) IsNew() bool { return f.TypeID == "" }
+
+// Action is where the form posts.
+func (f MilestoneTypeForm) Action() string {
+	if f.IsNew() {
+		return paths.MilestoneTypes
+	}
+	return paths.MilestoneTypes + "/" + f.TypeID
+}
+
+func (f MilestoneTypeForm) Title() string {
+	if f.IsNew() {
+		return labels.MilestoneTypesNewTitle
+	}
+	return labels.MilestoneTypesEditTitle
+}
+
+templ MilestoneType(form MilestoneTypeForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	{{ form.Chrome.Current = labels.MilestoneTypesTitle }}
+	@shared.Page(form.Title(), form.Chrome) {
+		<main class="mx-auto w-full max-w-xl px-6 py-10">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">{ form.Title() }</h1>
+			@shared.FormAlert(form.Alert)
+			@shared.FormNotice(form.Notice)
+			<form method="post" action={ templ.SafeURL(form.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
+				@shared.FormField(shared.FieldProps{
+					Name:    FieldMilestoneTypeName,
+					Label:   labels.MilestoneTypesName,
+					Hint:    labels.MilestoneTypesNameHint,
+					Message: messages[FieldMilestoneTypeName],
+				}) {
+					@input.Input(input.Props{
+						ID:         FieldMilestoneTypeName,
+						Name:       FieldMilestoneTypeName,
+						Value:      form.Name,
+						HasError:   messages[FieldMilestoneTypeName] != "",
+						Attributes: templ.Attributes{"autocomplete": "off", "autofocus": true},
+					})
+				}
+				@shared.FormField(shared.FieldProps{
+					Name:    FieldMilestoneTypeDescription,
+					Label:   labels.MilestoneTypesDescription,
+					Hint:    labels.MilestoneTypesDescriptionHint,
+					Message: messages[FieldMilestoneTypeDescription],
+				}) {
+					@input.Input(input.Props{
+						ID:         FieldMilestoneTypeDescription,
+						Name:       FieldMilestoneTypeDescription,
+						Value:      form.Description,
+						HasError:   messages[FieldMilestoneTypeDescription] != "",
+						Attributes: templ.Attributes{"autocomplete": "off"},
+					})
+				}
+				if !form.IsNew() {
+					@shared.ActiveBox(FieldMilestoneTypeActive, form.Active)
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+					{ labels.ActionSave }
+				}
+			</form>
+			<div class="mt-4">
+				@button.Button(button.Props{Href: paths.MilestoneTypes, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.ActionBackToList }
+				}
+			</div>
+			if !form.IsNew() {
+				@shared.AuditTrail(form.Trail)
+			}
+		</main>
+	}
+}

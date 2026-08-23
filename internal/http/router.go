@@ -1,4 +1,8 @@
-// Package http is the transport layer: router, middleware, handlers and views.
+// Package http is the transport layer: the router, and the screens that are not
+// yet moved into a section package of their own.
+//
+// The router is the one place that names every route. It imports a section
+// package; a section package never imports it back.
 package http
 
 import (
@@ -10,8 +14,16 @@ import (
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/http/account"
+	"github.com/paveltessman/pilam/internal/http/drops"
 	"github.com/paveltessman/pilam/internal/http/middleware"
+	"github.com/paveltessman/pilam/internal/http/milestones"
+	"github.com/paveltessman/pilam/internal/http/models"
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/seasons"
+	"github.com/paveltessman/pilam/internal/http/shared"
 	"github.com/paveltessman/pilam/internal/http/static"
+	"github.com/paveltessman/pilam/internal/http/users"
 	"github.com/paveltessman/pilam/internal/milestone"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
@@ -67,59 +79,59 @@ func NewRouter(deps Deps) http.Handler {
 	mux.HandleFunc("GET /healthz", reportHealth(deps.DB))
 	mux.HandleFunc("GET /media/{key...}", serveMedia(deps.Media))
 
-	mux.HandleFunc("GET "+loginPath, showLogin())
-	mux.HandleFunc("POST "+loginPath, submitLogin(deps.SessionMgr, deps.AuthSvc))
-	mux.HandleFunc("POST "+logoutPath, submitLogout())
+	mux.HandleFunc("GET "+paths.Login, account.ShowLogin())
+	mux.HandleFunc("POST "+paths.Login, account.SubmitLogin(deps.SessionMgr, deps.AuthSvc))
+	mux.HandleFunc("POST "+paths.Logout, account.SubmitLogout())
 
 	// Every screen from here down needs a login, and a password that is not
 	// expired. The guard lets the change screen itself through, and logout
 	// stays above the guard, so a user with an expired password reaches those
 	// two and nothing else.
 	guard := middleware.Chain(
-		middleware.RequireIdentity(loginPath),
-		middleware.RequirePasswordChange(changePasswordPath),
+		middleware.RequireIdentity(paths.Login),
+		middleware.RequirePasswordChange(paths.ChangePassword),
 	)
 	// The root path holds no screen. It sends the browser to the model list.
-	mux.Handle("GET /{$}", guard(redirectTo(modelsPath)))
-	mux.Handle("GET "+changePasswordPath, guard(showChangePassword()))
-	mux.Handle("POST "+changePasswordPath, guard(submitChangePassword(deps.SessionMgr, deps.AuthSvc)))
+	mux.Handle("GET "+paths.Root, guard(shared.RedirectTo(paths.Models)))
+	mux.Handle("GET "+paths.ChangePassword, guard(account.ShowChangePassword()))
+	mux.Handle("POST "+paths.ChangePassword, guard(account.SubmitChangePassword(deps.SessionMgr, deps.AuthSvc)))
 
-	mux.Handle("GET "+modelsPath, guard(showModels(deps.CatalogSvc, deps.Media)))
-	mux.Handle("POST "+modelsPath, guard(createModel(deps.CatalogSvc)))
-	mux.Handle("GET "+modelNewPath, guard(showNewModel(deps.CatalogSvc)))
-	mux.Handle("GET "+modelPath, guard(showModel(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+modelPath, guard(saveModel(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+modelPhotosPath, guard(addModelPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+modelOrderPath, guard(reorderModelPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+modelPhotoPath, guard(removeModelPhoto(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.Models, guard(models.ShowList(deps.CatalogSvc, deps.Media)))
+	mux.Handle("POST "+paths.Models, guard(models.Create(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.ModelNew, guard(models.ShowNew(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.Model, guard(models.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.Model, guard(models.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.ModelPhotos, guard(models.AddPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.ModelOrder, guard(models.ReorderPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.ModelPhoto, guard(models.RemovePhoto(deps.CatalogSvc)))
 
 	// S5, the users section. Root only: a member gets a 403 on every route of
 	// it, and never sees the nav link that leads here.
 	root := middleware.Chain(guard, middleware.RequireRole(auth.RootRole))
-	mux.Handle("GET "+usersPath, root(showUsers(deps.AuthSvc)))
-	mux.Handle("POST "+usersPath, root(createUser(deps.AuthSvc)))
-	mux.Handle("GET "+userNewPath, root(showNewUser()))
-	mux.Handle("GET "+userPath, root(showUser(deps.AuthSvc, deps.AuditLog)))
-	mux.Handle("POST "+userPath, root(saveUser(deps.AuthSvc, deps.AuditLog)))
-	mux.Handle("POST "+userPassPath, root(resetUserPasswd(deps.AuthSvc)))
+	mux.Handle("GET "+paths.Users, root(users.ShowList(deps.AuthSvc)))
+	mux.Handle("POST "+paths.Users, root(users.Create(deps.AuthSvc)))
+	mux.Handle("GET "+paths.UserNew, root(users.ShowNew()))
+	mux.Handle("GET "+paths.User, root(users.Show(deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.User, root(users.Save(deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.UserPass, root(users.ResetPasswd(deps.AuthSvc)))
 
-	mux.Handle("GET "+seasonsPath, root(showSeasons(deps.CatalogSvc)))
-	mux.Handle("POST "+seasonsPath, root(createSeason(deps.CatalogSvc)))
-	mux.Handle("GET "+seasonNewPath, root(showNewSeason()))
-	mux.Handle("GET "+seasonPath, root(showSeason(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
-	mux.Handle("POST "+seasonPath, root(saveSeason(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("GET "+paths.Seasons, root(seasons.ShowList(deps.CatalogSvc)))
+	mux.Handle("POST "+paths.Seasons, root(seasons.Create(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.SeasonNew, root(seasons.ShowNew()))
+	mux.Handle("GET "+paths.Season, root(seasons.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.Season, root(seasons.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
-	mux.Handle("GET "+dropsPath, root(showDrops(deps.CatalogSvc)))
-	mux.Handle("POST "+dropsPath, root(createDrop(deps.CatalogSvc)))
-	mux.Handle("GET "+dropNewPath, root(showNewDrop(deps.CatalogSvc)))
-	mux.Handle("GET "+dropPath, root(showDrop(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
-	mux.Handle("POST "+dropPath, root(saveDrop(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("GET "+paths.Drops, root(drops.ShowList(deps.CatalogSvc)))
+	mux.Handle("POST "+paths.Drops, root(drops.Create(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.DropNew, root(drops.ShowNew(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.Drop, root(drops.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.Drop, root(drops.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
-	mux.Handle("GET "+milestoneTypesPath, root(showMilestoneTypes(deps.MilestoneSvc)))
-	mux.Handle("POST "+milestoneTypesPath, root(createMilestoneType(deps.MilestoneSvc)))
-	mux.Handle("GET "+milestoneTypeNewPath, root(showNewMilestoneType()))
-	mux.Handle("GET "+milestoneTypePath, root(showMilestoneType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
-	mux.Handle("POST "+milestoneTypePath, root(saveMilestoneType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("GET "+paths.MilestoneTypes, root(milestones.ShowTypes(deps.MilestoneSvc)))
+	mux.Handle("POST "+paths.MilestoneTypes, root(milestones.CreateType(deps.MilestoneSvc)))
+	mux.Handle("GET "+paths.MilestoneTypeNew, root(milestones.ShowNewType()))
+	mux.Handle("GET "+paths.MilestoneType, root(milestones.ShowType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneType, root(milestones.SaveType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;
