@@ -1,9 +1,11 @@
 package views
 
 import (
+	"fmt"
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/milestone"
 	"github.com/paveltessman/pilam/internal/platform/date"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 )
@@ -86,8 +88,13 @@ func auditAction(entry audit.Entry) string {
 		return dropAction(entry)
 	case audit.EntityModel:
 		return modelAction(entry)
+	case audit.EntityUser:
+		return userAction(entry)
+	case audit.EntityMilestoneType:
+		return milestoneTypeAction(entry)
+	default:
+		panic(fmt.Sprintf("Unknown audit entity: %s", entry.Entity))
 	}
-	return userAction(entry)
 }
 
 // userAction names a change of a user. A name change also states which of the
@@ -155,6 +162,28 @@ func modelAction(entry audit.Entry) string {
 		}
 	}
 	return catalogAction(entry)
+}
+
+// milestoneTypeAction names a change of a milestone type. The type carries two
+// fields the user fills in, so a change states which of them moved.
+func milestoneTypeAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionCreated:
+		return labels.MilestoneTypesAuditCreated
+	case audit.ActionDeactivated:
+		return labels.AuditOff
+	case audit.ActionReactivated:
+		return labels.AuditOn
+	case audit.ActionChanged:
+		switch entry.FieldKey {
+		case milestone.FieldName:
+			return labels.AuditName
+		case milestone.FieldDescription:
+			return labels.MilestoneTypesAuditDescription
+		}
+	}
+	// An action recorded and not named here.
+	return labels.AuditOther
 }
 
 // catalogAction names what the three catalog cards share: the name, and the
