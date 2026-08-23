@@ -25,7 +25,7 @@ type Type struct {
 }
 
 // TypesStore is the store of milestone types.
-// Writes return ErrShortNameTaken on a duplicate short name.
+// Writes return ErrNameTaken on a duplicate name.
 type TypesStore interface {
 	// ByID returns ErrNoType when nothing matches
 	ByID(ctx context.Context, id ids.ID) (Type, error)
