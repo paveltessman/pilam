@@ -249,6 +249,7 @@ func auditedDeps(t *testing.T) (Deps, *recorded) {
 	d := baseDeps(t)
 	d.AuthSvc = authServiceOn(t, trail)
 	d.CatalogSvc = catalogServiceOn(t, trail)
+	d.MilestoneSvc = milestoneServiceOn(t, trail)
 	d.AuditLog = audit.NewLog(trail, testClock())
 	return d, trail
 }
