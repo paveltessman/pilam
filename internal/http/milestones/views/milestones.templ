@@ -6,7 +6,7 @@ import (
 	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
 	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
 	shared "github.com/paveltessman/pilam/internal/http/shared/views"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
@@ -20,8 +20,8 @@ const (
 // MilestonesPage is the list: every type, active and retired, by short name.
 type MilestonesPage struct {
 	Chrome    shared.Chrome
-	Types     []milestone.Type
-	Templates []milestone.Template
+	Types     []milestones.Type
+	Templates []milestones.Template
 }
 
 templ Milestones(page MilestonesPage) {
@@ -62,7 +62,7 @@ templ Milestones(page MilestonesPage) {
 	}
 }
 
-templ milestoneTypeRow(milestoneType milestone.Type) {
+templ milestoneTypeRow(milestoneType milestones.Type) {
 	<tr class="border-b last:border-0 hover:bg-muted/50">
 		<td class="px-4 py-3 whitespace-nowrap">
 			<a href={ templ.SafeURL(paths.Milestones + "/" + milestoneType.ID.String()) } class="font-medium underline-offset-4 hover:underline">
@@ -95,7 +95,7 @@ type MilestoneTypeForm struct {
 }
 
 // NewMilestoneTypeForm is the form of a milestone type that already exists.
-func NewMilestoneTypeForm(chrome shared.Chrome, milestoneType milestone.Type) MilestoneTypeForm {
+func NewMilestoneTypeForm(chrome shared.Chrome, milestoneType milestones.Type) MilestoneTypeForm {
 	form := MilestoneTypeForm{
 		Chrome:      chrome,
 		TypeID:      milestoneType.ID.String(),

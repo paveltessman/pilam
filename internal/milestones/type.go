@@ -1,4 +1,4 @@
-package milestone
+package milestones
 
 import (
 	"context"

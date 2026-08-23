@@ -10,7 +10,7 @@ import (
 	"github.com/paveltessman/pilam/internal/http/milestones/views"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	"github.com/paveltessman/pilam/internal/http/testkit"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
@@ -48,9 +48,9 @@ func createdType(t *testing.T, d testkit.Deps, cookie *http.Cookie, name, descri
 
 func TestMilestoneTypeScreenNamesFieldsThatServiceRejects(t *testing.T) {
 	pairs := [][2]string{
-		{views.FieldName, milestone.FieldName},
-		{views.FieldDescription, milestone.FieldDescription},
-		{views.FieldActive, milestone.FieldActive},
+		{views.FieldName, milestones.FieldName},
+		{views.FieldDescription, milestones.FieldDescription},
+		{views.FieldActive, milestones.FieldActive},
 	}
 	for _, pair := range pairs {
 		if pair[0] != pair[1] {

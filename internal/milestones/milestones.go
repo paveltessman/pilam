@@ -1,6 +1,6 @@
 // Package milestone owns the time and action calendar: the milestone types,
 // the templates that order them, and the milestones of one model.
-package milestone
+package milestones
 
 import (
 	"context"

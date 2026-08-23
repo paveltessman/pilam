@@ -6,10 +6,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 )
 
-var _ milestone.Atomic = (*DB)(nil)
+var _ milestones.Atomic = (*DB)(nil)
 
 const (
 	milestoneTypeNameIndex = "milestone_type_name_key"
@@ -25,9 +25,9 @@ func duplicateError(err error) error {
 
 	switch pgErr.ConstraintName {
 	case milestoneTypeNameIndex:
-		return fmt.Errorf("%w: %w", milestone.ErrNameTaken, err)
+		return fmt.Errorf("%w: %w", milestones.ErrNameTaken, err)
 	case milestoneTypeIDIndex:
-		return fmt.Errorf("%w: %w", milestone.ErrIDTaken, err)
+		return fmt.Errorf("%w: %w", milestones.ErrIDTaken, err)
 	default:
 		// Reaching this means there is a new constraint in the db
 		// that this function does not know about.

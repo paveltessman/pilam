@@ -12,7 +12,7 @@ import (
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
 	pilamhttp "github.com/paveltessman/pilam/internal/http"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -58,7 +58,7 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 		Photos:  postgres.NewPhotos(db),
 		Atomic:  db,
 	}, idGen, trail)
-	milestoneSvc := milestone.NewService(milestone.Store{
+	milestoneSvc := milestones.NewService(milestones.Store{
 		Types:  postgres.NewMilestoneTypes(db),
 		Atomic: db,
 	}, idGen, trail)

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/paveltessman/pilam/internal/audit"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 )
 
@@ -18,56 +18,56 @@ import (
 // duplicate short name each write refuses.
 type milestoneTypeStore struct {
 	mu    sync.Mutex
-	types map[ids.ID]milestone.Type
+	types map[ids.ID]milestones.Type
 }
 
 func newMilestoneTypeStore() *milestoneTypeStore {
-	return &milestoneTypeStore{types: make(map[ids.ID]milestone.Type)}
+	return &milestoneTypeStore{types: make(map[ids.ID]milestones.Type)}
 }
 
-func (s *milestoneTypeStore) ByID(_ context.Context, id ids.ID) (milestone.Type, error) {
+func (s *milestoneTypeStore) ByID(_ context.Context, id ids.ID) (milestones.Type, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	milestoneType, found := s.types[id]
 	if !found {
-		return milestone.Type{}, milestone.ErrNoType
+		return milestones.Type{}, milestones.ErrNoType
 	}
 	return milestoneType, nil
 }
 
-func (s *milestoneTypeStore) List(context.Context) ([]milestone.Type, error) {
+func (s *milestoneTypeStore) List(context.Context) ([]milestones.Type, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	types := slices.Collect(maps.Values(s.types))
-	slices.SortFunc(types, func(a, b milestone.Type) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(types, func(a, b milestones.Type) int { return strings.Compare(a.Name, b.Name) })
 	return types, nil
 }
 
-func (s *milestoneTypeStore) Create(_ context.Context, in milestone.Type) error {
+func (s *milestoneTypeStore) Create(_ context.Context, in milestones.Type) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, held := range s.types {
 		if strings.EqualFold(held.Name, in.Name) {
-			return milestone.ErrNameTaken
+			return milestones.ErrNameTaken
 		}
 	}
 	s.types[in.ID] = in
 	return nil
 }
 
-func (s *milestoneTypeStore) Update(_ context.Context, in milestone.Type) error {
+func (s *milestoneTypeStore) Update(_ context.Context, in milestones.Type) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if _, found := s.types[in.ID]; !found {
-		return milestone.ErrNoType
+		return milestones.ErrNoType
 	}
 	for _, held := range s.types {
 		if held.ID != in.ID && strings.EqualFold(held.Name, in.Name) {
-			return milestone.ErrNameTaken
+			return milestones.ErrNameTaken
 		}
 	}
 	s.types[in.ID] = in
@@ -76,13 +76,13 @@ func (s *milestoneTypeStore) Update(_ context.Context, in milestone.Type) error 
 
 // MilestoneServiceOn returns the service the test router is wired with,
 // recording to the trail the test reads back.
-func MilestoneServiceOn(t *testing.T, trail *Trail) *milestone.Service {
+func MilestoneServiceOn(t *testing.T, trail *Trail) *milestones.Service {
 	t.Helper()
 
 	gen := ids.NewGenerator()
-	store := milestone.Store{
+	store := milestones.Store{
 		Types:  newMilestoneTypeStore(),
 		Atomic: directAtomic{},
 	}
-	return milestone.NewService(store, gen, audit.NewTrail(trail, Clock(), gen))
+	return milestones.NewService(store, gen, audit.NewTrail(trail, Clock(), gen))
 }

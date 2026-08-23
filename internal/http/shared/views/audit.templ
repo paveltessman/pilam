@@ -6,7 +6,7 @@ import (
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/date"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 )
@@ -177,9 +177,9 @@ func milestoneTypeAction(entry audit.Entry) string {
 		return labels.AuditOn
 	case audit.ActionChanged:
 		switch entry.FieldKey {
-		case milestone.FieldName:
+		case milestones.FieldName:
 			return labels.AuditName
-		case milestone.FieldDescription:
+		case milestones.FieldDescription:
 			return labels.MilestoneTypesAuditDescription
 		}
 	}
