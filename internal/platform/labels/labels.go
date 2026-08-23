@@ -214,6 +214,9 @@ const (
 	MilestoneTypesEditTitle = "Карточка этапа"
 	MilestoneTypesEmpty     = "Этапов пока нет."
 
+	MilestoneTemplatesTitle = "Критические пути"
+	MilestoneTemplatesEmpty = "Шаблонов пока нет."
+
 	MilestoneTypesName            = "Название"
 	MilestoneTypesNameHint        = "Например, «Отшив»."
 	MilestoneTypesDescription     = "Описание"

@@ -19,8 +19,9 @@ const (
 
 // MilestonesPage is the list: every type, active and retired, by short name.
 type MilestonesPage struct {
-	Chrome shared.Chrome
-	Types  []milestone.Type
+	Chrome    shared.Chrome
+	Types     []milestone.Type
+	Templates []milestone.Template
 }
 
 templ Milestones(page MilestonesPage) {
@@ -28,6 +29,10 @@ templ Milestones(page MilestonesPage) {
 	@shared.Page(labels.MilestoneTypesTitle, page.Chrome) {
 		<main class="mx-auto w-full max-w-5xl px-6 py-10">
 			<div class="mb-6 flex items-center gap-4">
+				<h1 class="text-2xl font-semibold tracking-tight">{ labels.MilestoneTemplatesTitle }</h1>
+			</div>
+			@shared.EmptyPanel(labels.MilestoneTemplatesEmpty)
+			<div class="mb-6 mt-6 flex items-center gap-4">
 				<h1 class="text-2xl font-semibold tracking-tight">{ labels.MilestoneTypesTitle }</h1>
 				@button.Button(button.Props{Href: paths.Milestones + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
 					{ labels.ActionAddMilestoneType }
