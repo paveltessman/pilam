@@ -1,0 +1,233 @@
+package views
+
+import (
+	"fmt"
+
+	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/auth"
+	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/platform/date"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
+
+// AuditEvent is one entry of the trail as a card shows it: the change the trail
+// recorded, and the user who made it.
+type AuditEvent struct {
+	Entry audit.Entry
+	Actor auth.Account
+}
+
+// When is the moment of the change. The log stamps it in the business timezone.
+func (e AuditEvent) When() string { return labels.DateTime(e.Entry.At) }
+
+// Who names the actor.
+func (e AuditEvent) Who() string {
+	if e.Actor.Email == "" {
+		return labels.Empty
+	}
+	return labels.Name(e.Actor.FirstName, e.Actor.LastName)
+}
+
+// What reads the change: the action, and the two values it moved between where
+// those add anything to the action.
+func (e AuditEvent) What() string {
+	action := auditAction(e.Entry)
+	old, next := auditValue(e.Entry.FieldKey, e.Entry.Old), auditValue(e.Entry.FieldKey, e.Entry.New)
+
+	switch {
+	case old != "" && next != "":
+		return action + ": " + old + " → " + next
+	case next != "":
+		return action + ": " + next
+	}
+	return action
+}
+
+// AuditTrail is the history of one record, newest first. Every card renders the
+// same table. It reads what the trail recorded, and it changes nothing.
+templ AuditTrail(events []AuditEvent) {
+	<section class="mt-10">
+		<h2 class="mb-4 text-lg font-semibold tracking-tight">{ labels.AuditTitle }</h2>
+		if len(events) == 0 {
+			<div class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+				<p>{ labels.AuditEmpty }</p>
+			</div>
+		} else {
+			<div class="overflow-x-auto rounded-lg border">
+				<table class="w-full text-sm">
+					<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+						<tr>
+							<th scope="col" class="px-4 py-3 font-medium">{ labels.AuditWhen }</th>
+							<th scope="col" class="px-4 py-3 font-medium">{ labels.AuditWho }</th>
+							<th scope="col" class="px-4 py-3 font-medium">{ labels.AuditWhat }</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, event := range events {
+							<tr class="border-b last:border-0">
+								<td class="px-4 py-3 whitespace-nowrap text-muted-foreground">{ event.When() }</td>
+								<td class="px-4 py-3">{ event.Who() }</td>
+								<td class="px-4 py-3">{ event.What() }</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+// auditAction is the one place a recorded action becomes a phrase the user
+// reads. The entity picks the wording, because one action names a different
+// thing on each card.
+func auditAction(entry audit.Entry) string {
+	switch entry.Entity {
+	case audit.EntitySeason:
+		return seasonAction(entry)
+	case audit.EntityDrop:
+		return dropAction(entry)
+	case audit.EntityModel:
+		return modelAction(entry)
+	case audit.EntityUser:
+		return userAction(entry)
+	case audit.EntityMilestoneType:
+		return milestoneTypeAction(entry)
+	default:
+		panic(fmt.Sprintf("Unknown audit entity: %s", entry.Entity))
+	}
+}
+
+// userAction names a change of a user. A name change also states which of the
+// two names moved.
+func userAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionCreated:
+		return labels.UsersAuditCreated
+	case audit.ActionNameChanged:
+		if entry.FieldKey == auth.FieldLastName {
+			return labels.UsersAuditLastName
+		}
+		return labels.UsersAuditFirstName
+	case audit.ActionRoleChanged:
+		return labels.UsersAuditRole
+	case audit.ActionDeactivated:
+		return labels.UsersAuditOff
+	case audit.ActionReactivated:
+		return labels.UsersAuditOn
+	case audit.ActionPasswdChanged:
+		return labels.UsersAuditPasswd
+	case audit.ActionPasswdReset:
+		return labels.UsersAuditReset
+	}
+	return labels.AuditOther
+}
+
+// seasonAction names a change of a season.
+func seasonAction(entry audit.Entry) string {
+	if entry.Action == audit.ActionCreated {
+		return labels.SeasonsAuditCreated
+	}
+	if entry.Action == audit.ActionChanged && entry.FieldKey == catalog.FieldStartDate {
+		return labels.SeasonsAuditStart
+	}
+	return catalogAction(entry)
+}
+
+// dropAction names a change of a drop.
+func dropAction(entry audit.Entry) string {
+	if entry.Action == audit.ActionCreated {
+		return labels.DropsAuditCreated
+	}
+	if entry.Action == audit.ActionChanged && entry.FieldKey == catalog.FieldTargetDate {
+		return labels.DropsAuditTarget
+	}
+	return catalogAction(entry)
+}
+
+// modelAction names a change of a model. A photo change is a change of the
+// model, so the strip is read here as well.
+func modelAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionCreated:
+		return labels.ModelsAuditCreated
+	case audit.ActionPhotoAdded:
+		return labels.ModelsAuditPhotoAdded
+	case audit.ActionPhotoRemoved:
+		return labels.ModelsAuditPhotoRemoved
+	case audit.ActionPhotoReordered:
+		return labels.ModelsAuditPhotoReorder
+	case audit.ActionChanged:
+		if entry.FieldKey == catalog.FieldArticle {
+			return labels.ModelsAuditArticle
+		}
+	}
+	return catalogAction(entry)
+}
+
+// milestoneTypeAction names a change of a milestone type. The type carries two
+// fields the user fills in, so a change states which of them moved.
+func milestoneTypeAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionCreated:
+		return labels.MilestoneTypesAuditCreated
+	case audit.ActionDeactivated:
+		return labels.AuditOff
+	case audit.ActionReactivated:
+		return labels.AuditOn
+	case audit.ActionChanged:
+		switch entry.FieldKey {
+		case milestone.FieldName:
+			return labels.AuditName
+		case milestone.FieldDescription:
+			return labels.MilestoneTypesAuditDescription
+		}
+	}
+	// An action recorded and not named here.
+	return labels.AuditOther
+}
+
+// catalogAction names what the three catalog cards share: the name, and the
+// `active` flag.
+func catalogAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionDeactivated:
+		return labels.AuditOff
+	case audit.ActionReactivated:
+		return labels.AuditOn
+	case audit.ActionChanged:
+		if entry.FieldKey == catalog.FieldName {
+			return labels.AuditName
+		}
+	}
+	// An action recorded and not named here.
+	return labels.AuditOther
+}
+
+// auditValue turns one side of a change into a word the user reads.
+func auditValue(field, value string) string {
+	switch {
+	case value == "" || value == audit.Marker:
+		return ""
+	case field == auth.FieldActive:
+		return ""
+	case field == catalog.FieldPhoto || field == catalog.FieldPhotoOrder:
+		return ""
+	case field == catalog.FieldStartDate || field == catalog.FieldTargetDate:
+		return auditDate(value)
+	case field == auth.FieldRole:
+		return RoleLabel(auth.Role(value))
+	}
+	return value
+}
+
+// auditDate reads a date the trail holds in the wire form and renders it the
+// way the screens render every other date. A value that is not a date is left
+// as it stands.
+func auditDate(value string) string {
+	day, err := date.Parse(value)
+	if err != nil {
+		return value
+	}
+	return labels.Date(day)
+}

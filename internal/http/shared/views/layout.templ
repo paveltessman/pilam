@@ -1,0 +1,89 @@
+// Package views holds the layout, the form controls and the audit trail that
+// every screen package shares.
+//
+// A screen package imports this one under the name "shared", so that a reader
+// of a screen sees at once which part comes from here.
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
+
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="ru">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title }</title>
+			<link rel="stylesheet" href="/static/css/app.css"/>
+			<script src="/static/js/htmx.min.js" defer></script>
+		</head>
+		<body class="min-h-screen bg-background text-foreground antialiased">
+			{ children... }
+		</body>
+	</html>
+}
+
+// Chrome is what every screen behind the login shares: which nav item is the
+// current one, and whether the user reaches the screens only a root reaches.
+type Chrome struct {
+	Current string
+	IsRoot  bool
+}
+
+// navItem is one link in the header.
+type navItem struct {
+	Label string
+	Href  string
+}
+
+// Page is Layout with the header every screen behind the login carries.
+templ Page(title string, chrome Chrome) {
+	@Layout(title) {
+		@appHeader(chrome)
+		{ children... }
+	}
+}
+
+templ appHeader(chrome Chrome) {
+	<header class="border-b">
+		<div class="mx-auto flex w-full max-w-5xl items-center gap-4 px-6 py-4">
+			<span class="text-lg font-semibold tracking-tight">pilam</span>
+			<nav class="flex items-center gap-4 text-sm">
+				for _, item := range chrome.items() {
+					<a
+						href={ templ.SafeURL(item.Href) }
+						if item.Label == chrome.Current {
+							class="font-medium text-foreground"
+							aria-current="page"
+						} else {
+							class="text-muted-foreground hover:text-foreground"
+						}
+					>{ item.Label }</a>
+				}
+			</nav>
+			<form method="post" action={ paths.Logout } class="ml-auto">
+				@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.NavLogOut }
+				}
+			</form>
+		</div>
+	</header>
+}
+
+// items is the nav a user of this role sees.
+func (c Chrome) items() []navItem {
+	items := []navItem{{Label: labels.ModelsTitle, Href: paths.Models}}
+	if c.IsRoot {
+		items = append(items,
+			navItem{Label: labels.NavSeasons, Href: paths.Seasons},
+			navItem{Label: labels.NavDrops, Href: paths.Drops},
+			navItem{Label: labels.NavMilestones, Href: paths.MilestoneTypes},
+			navItem{Label: labels.NavUsers, Href: paths.Users},
+		)
+	}
+	return items
+}

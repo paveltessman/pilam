@@ -1,76 +1,18 @@
-package http
+package http_test
 
 import (
-	"context"
 	"errors"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/paveltessman/pilam/internal/platform/clock"
-	"github.com/paveltessman/pilam/internal/platform/config"
-	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/testkit"
 	"github.com/paveltessman/pilam/internal/platform/labels"
-	"github.com/paveltessman/pilam/internal/platform/logging"
-	"github.com/paveltessman/pilam/internal/platform/media"
-	"github.com/paveltessman/pilam/internal/platform/session"
 )
 
-type stubPinger struct{ err error }
-
-func (p stubPinger) Ping(context.Context) error { return p.err }
-
-// deps is what the composition root would have built, with the database
-// swapped for a stub, media in a throwaway directory, and the log discarded.
-// deps is the wiring a test serves requests with.
-func deps(t *testing.T) Deps {
-	t.Helper()
-	d, _ := auditedDeps(t)
-	return d
-}
-
-// baseDeps is everything that does not depend on the audit trail. auditedDeps
-// adds the service and the log, which share one trail.
-func baseDeps(t *testing.T) Deps {
-	t.Helper()
-	d := Deps{
-		DB:           stubPinger{},
-		Logger:       logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
-		IDs:          ids.NewGenerator(),
-		Media:        mediaStore(t),
-		SessionMgr:   session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
-		CatalogSvc:   catalogServiceOn(t, &recorded{}),
-		MilestoneSvc: milestoneServiceOn(t, &recorded{}),
-	}
-	return d
-}
-
-func mediaStore(t *testing.T) media.Store {
-	t.Helper()
-	store, err := media.New(config.Media{Dir: t.TempDir()})
-	if err != nil {
-		t.Fatalf("building the media store: %v", err)
-	}
-	return store
-}
-
-func get(t *testing.T, path string) *httptest.ResponseRecorder {
-	t.Helper()
-	return getWith(t, deps(t), path)
-}
-
-func getWith(t *testing.T, deps Deps, path string) *httptest.ResponseRecorder {
-	t.Helper()
-	rec := httptest.NewRecorder()
-	NewRouter(deps).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-	return rec
-}
-
 func TestHealthReportsOKWhenTheDatabaseAnswers(t *testing.T) {
-	rec := get(t, "/healthz")
+	rec := testkit.Get(t, "/healthz")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -80,9 +22,8 @@ func TestHealthReportsOKWhenTheDatabaseAnswers(t *testing.T) {
 }
 
 func TestHealthReportsUnavailableWhenTheDatabaseDoesNot(t *testing.T) {
-	broken := deps(t)
-	broken.DB = stubPinger{err: errors.New("connection refused")}
-	rec := getWith(t, broken, "/healthz")
+	broken := testkit.UnhealthyDeps(t, errors.New("connection refused"))
+	rec := testkit.GetWith(t, broken, "/healthz")
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
 	}
@@ -92,7 +33,7 @@ func TestHealthReportsUnavailableWhenTheDatabaseDoesNot(t *testing.T) {
 }
 
 func TestPagesAreStyledAndRenderComponents(t *testing.T) {
-	rec := get(t, loginPath)
+	rec := testkit.Get(t, paths.Login)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -111,7 +52,7 @@ func TestPagesAreStyledAndRenderComponents(t *testing.T) {
 // The stylesheet is embedded at compile time, so a build that skipped
 // `make css` cannot reach this test — but a mis-mounted route can.
 func TestStylesheetIsServed(t *testing.T) {
-	rec := get(t, "/static/css/app.css")
+	rec := testkit.Get(t, "/static/css/app.css")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -121,7 +62,7 @@ func TestStylesheetIsServed(t *testing.T) {
 }
 
 func TestUnknownPathIs404(t *testing.T) {
-	if rec := get(t, "/nope"); rec.Code != http.StatusNotFound {
+	if rec := testkit.Get(t, "/nope"); rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }

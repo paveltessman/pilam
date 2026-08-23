@@ -1,0 +1,261 @@
+// Package views holds the drop screens.
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
+	shared "github.com/paveltessman/pilam/internal/http/shared/views"
+	"github.com/paveltessman/pilam/internal/platform/date"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+	"github.com/paveltessman/pilam/internal/platform/validate"
+)
+
+const (
+	FieldDropName   = "name"
+	FieldDropSeason = "season_id"
+	FieldDropTarget = "target_date"
+	FieldDropActive = "active"
+)
+
+// DropGroup is the drops of one season, oldest first. A drop belongs to a
+// season, so the list shows it under the season that holds it.
+type DropGroup struct {
+	Season catalog.Season
+	Drops  []catalog.Drop
+}
+
+// DropsPage is the list: every season, and the drops inside it.
+type DropsPage struct {
+	Chrome shared.Chrome
+	Groups []DropGroup
+}
+
+// CanCreate reports whether there is an active season to put a new drop in.
+// Without one the section offers no create link, because the form has nothing
+// to choose from.
+func (p DropsPage) CanCreate() bool {
+	for _, group := range p.Groups {
+		if group.Season.Active {
+			return true
+		}
+	}
+	return false
+}
+
+templ Drops(page DropsPage) {
+	{{ page.Chrome.Current = labels.DropsTitle }}
+	@shared.Page(labels.DropsTitle, page.Chrome) {
+		<main class="mx-auto w-full max-w-5xl px-6 py-10">
+			<div class="mb-6 flex items-center gap-4">
+				<h1 class="text-2xl font-semibold tracking-tight">{ labels.DropsTitle }</h1>
+				if page.CanCreate() {
+					@button.Button(button.Props{Href: paths.Drops + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
+						{ labels.ActionAddDrop }
+					}
+				}
+			</div>
+			if len(page.Groups) == 0 {
+				@shared.EmptyPanel(labels.DropsNoSeason)
+			} else {
+				<div class="space-y-8">
+					for _, group := range page.Groups {
+						@dropGroup(group)
+					}
+				</div>
+			}
+		</main>
+	}
+}
+
+templ dropGroup(group DropGroup) {
+	<section>
+		<h2 class="mb-3 flex items-center gap-2 text-lg font-semibold tracking-tight">
+			{ group.Season.Name }
+			if !group.Season.Active {
+				<span class="text-sm font-normal text-destructive">{ labels.StateInactive }</span>
+			}
+		</h2>
+		if len(group.Drops) == 0 {
+			<div class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+				<p>{ labels.DropsNone }</p>
+			</div>
+		} else {
+			<div class="overflow-x-auto rounded-lg border">
+				<table class="w-full text-sm">
+					<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+						<tr>
+							<th scope="col" class="px-4 py-3 font-medium">{ labels.DropsName }</th>
+							<th scope="col" class="px-4 py-3 font-medium">{ labels.DropsTarget }</th>
+							<th scope="col" class="px-4 py-3 font-medium">{ labels.StateColumn }</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, drop := range group.Drops {
+							@dropRow(drop)
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</section>
+}
+
+templ dropRow(drop catalog.Drop) {
+	<tr class="border-b last:border-0 hover:bg-muted/50">
+		<td class="px-4 py-3">
+			<a href={ templ.SafeURL(paths.Drops + "/" + drop.ID.String()) } class="font-medium underline-offset-4 hover:underline">
+				{ drop.Name }
+			</a>
+		</td>
+		<td class="px-4 py-3 whitespace-nowrap text-muted-foreground">{ labels.Date(drop.TargetDate) }</td>
+		<td class="px-4 py-3">
+			@shared.StateCell(drop.Active)
+		</td>
+	</tr>
+}
+
+// DropForm is the create screen and the edit screen.
+type DropForm struct {
+	Chrome     shared.Chrome
+	DropID     string
+	SeasonID   string
+	SeasonName string
+	Seasons    []catalog.Season
+	Name       string
+	TargetDate string
+	Active     bool
+	Alert      string
+	Notice     string
+	Errors     validate.FieldErrors
+
+	// Trail is what the audit log holds about this drop, newest first. The
+	// create screen has none, because the drop is not there yet.
+	Trail []shared.AuditEvent
+}
+
+// NewDropForm is the form of a drop that already exists, inside the season that
+// holds it.
+func NewDropForm(chrome shared.Chrome, drop catalog.Drop, season catalog.Season) DropForm {
+	form := DropForm{
+		Chrome:     chrome,
+		DropID:     drop.ID.String(),
+		SeasonID:   drop.SeasonID.String(),
+		SeasonName: season.Name,
+		Name:       drop.Name,
+		TargetDate: date.ISO(drop.TargetDate),
+		Active:     drop.Active,
+	}
+	return form
+}
+
+// IsNew reports whether the form creates a drop rather than editing one.
+func (f DropForm) IsNew() bool { return f.DropID == "" }
+
+// Action is where the form posts.
+func (f DropForm) Action() string {
+	if f.IsNew() {
+		return paths.Drops
+	}
+	return paths.Drops + "/" + f.DropID
+}
+
+func (f DropForm) Title() string {
+	if f.IsNew() {
+		return labels.DropsNewTitle
+	}
+	return labels.DropsEditTitle
+}
+
+// seasonOptions is the season select, in the order the list shows the seasons.
+func (f DropForm) seasonOptions() []shared.SelectOption {
+	options := make([]shared.SelectOption, len(f.Seasons))
+	for i, season := range f.Seasons {
+		options[i] = shared.SelectOption{Value: season.ID.String(), Label: season.Name}
+	}
+	return options
+}
+
+templ Drop(form DropForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	{{ form.Chrome.Current = labels.DropsTitle }}
+	@shared.Page(form.Title(), form.Chrome) {
+		<main class="mx-auto w-full max-w-xl px-6 py-10">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">{ form.Title() }</h1>
+			@shared.FormAlert(form.Alert)
+			@shared.FormNotice(form.Notice)
+			if form.IsNew() && len(form.Seasons) == 0 {
+				@shared.EmptyPanel(labels.DropsNoSeason)
+				<div class="mt-4">
+					@button.Button(button.Props{Href: paths.Seasons + "/new", Size: button.SizeSm}) {
+						{ labels.ActionAddSeason }
+					}
+				</div>
+			} else {
+				<form method="post" action={ templ.SafeURL(form.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
+					@shared.FormField(shared.FieldProps{
+						Name:    FieldDropSeason,
+						Label:   labels.DropsSeason,
+						Hint:    dropSeasonHint(form),
+						Message: messages[FieldDropSeason],
+					}) {
+						if form.IsNew() {
+							@shared.SelectBox(FieldDropSeason, form.seasonOptions(), form.SeasonID, messages[FieldDropSeason] != "")
+						} else {
+							@input.Input(input.Props{ID: FieldDropSeason, Value: form.SeasonName, Readonly: true})
+						}
+					}
+					@shared.FormField(shared.FieldProps{
+						Name:    FieldDropName,
+						Label:   labels.DropsName,
+						Message: messages[FieldDropName],
+					}) {
+						@input.Input(input.Props{
+							ID:         FieldDropName,
+							Name:       FieldDropName,
+							Value:      form.Name,
+							HasError:   messages[FieldDropName] != "",
+							Attributes: templ.Attributes{"autocomplete": "off"},
+						})
+					}
+					@shared.FormField(shared.FieldProps{
+						Name:    FieldDropTarget,
+						Label:   labels.DropsTarget,
+						Hint:    labels.DropsTargetHint,
+						Message: messages[FieldDropTarget],
+					}) {
+						@input.Input(input.Props{
+							ID:       FieldDropTarget,
+							Name:     FieldDropTarget,
+							Type:     input.TypeDate,
+							Value:    form.TargetDate,
+							HasError: messages[FieldDropTarget] != "",
+						})
+					}
+					if !form.IsNew() {
+						@shared.ActiveBox(FieldDropActive, form.Active)
+					}
+					@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+						{ labels.ActionSave }
+					}
+				</form>
+			}
+			<div class="mt-4">
+				@button.Button(button.Props{Href: paths.Drops, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.ActionBackToList }
+				}
+			</div>
+			if !form.IsNew() {
+				@shared.AuditTrail(form.Trail)
+			}
+		</main>
+	}
+}
+
+func dropSeasonHint(form DropForm) string {
+	if form.IsNew() {
+		return ""
+	}
+	return labels.DropsSeasonFixed
+}

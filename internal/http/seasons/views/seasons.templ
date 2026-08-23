@@ -1,0 +1,180 @@
+// Package views holds the season screens.
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
+	shared "github.com/paveltessman/pilam/internal/http/shared/views"
+	"github.com/paveltessman/pilam/internal/platform/date"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+	"github.com/paveltessman/pilam/internal/platform/validate"
+)
+
+const (
+	FieldSeasonName   = "name"
+	FieldSeasonStart  = "start_date"
+	FieldSeasonActive = "active"
+)
+
+// SeasonsPage is the list: every season, active and inactive, oldest first.
+type SeasonsPage struct {
+	Chrome  shared.Chrome
+	Seasons []catalog.Season
+}
+
+templ Seasons(page SeasonsPage) {
+	{{ page.Chrome.Current = labels.SeasonsTitle }}
+	@shared.Page(labels.SeasonsTitle, page.Chrome) {
+		<main class="mx-auto w-full max-w-5xl px-6 py-10">
+			<div class="mb-6 flex items-center gap-4">
+				<h1 class="text-2xl font-semibold tracking-tight">{ labels.SeasonsTitle }</h1>
+				@button.Button(button.Props{Href: paths.Seasons + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
+					{ labels.ActionAddSeason }
+				}
+			</div>
+			if len(page.Seasons) == 0 {
+				@shared.EmptyPanel(labels.SeasonsEmpty)
+			} else {
+				<div class="overflow-x-auto rounded-lg border">
+					<table class="w-full text-sm">
+						<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+							<tr>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.SeasonsName }</th>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.SeasonsStart }</th>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.StateColumn }</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, season := range page.Seasons {
+								@seasonRow(season)
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</main>
+	}
+}
+
+templ seasonRow(season catalog.Season) {
+	<tr class="border-b last:border-0 hover:bg-muted/50">
+		<td class="px-4 py-3">
+			<a href={ templ.SafeURL(paths.Seasons + "/" + season.ID.String()) } class="font-medium underline-offset-4 hover:underline">
+				{ season.Name }
+			</a>
+		</td>
+		<td class="px-4 py-3 whitespace-nowrap text-muted-foreground">{ labels.Date(season.StartDate) }</td>
+		<td class="px-4 py-3">
+			@shared.StateCell(season.Active)
+		</td>
+	</tr>
+}
+
+// SeasonForm is the create screen and the edit screen. They differ in one
+// control: a season that exists carries the `active` flag, and a new one is
+// always active.
+//
+// StartDate holds the wire form, YYYY-MM-DD, because that is what a date input
+// reads and posts back.
+type SeasonForm struct {
+	Chrome    shared.Chrome
+	SeasonID  string
+	Name      string
+	StartDate string
+	Active    bool
+	Alert     string
+	Notice    string
+	Errors    validate.FieldErrors
+
+	// Trail is what the audit log holds about this season, newest first. The
+	// create screen has none, because the season is not there yet.
+	Trail []shared.AuditEvent
+}
+
+// NewSeasonForm is the form of a season that already exists.
+func NewSeasonForm(chrome shared.Chrome, season catalog.Season) SeasonForm {
+	form := SeasonForm{
+		Chrome:    chrome,
+		SeasonID:  season.ID.String(),
+		Name:      season.Name,
+		StartDate: date.ISO(season.StartDate),
+		Active:    season.Active,
+	}
+	return form
+}
+
+// IsNew reports whether the form creates a season rather than editing one.
+func (f SeasonForm) IsNew() bool { return f.SeasonID == "" }
+
+// Action is where the form posts.
+func (f SeasonForm) Action() string {
+	if f.IsNew() {
+		return paths.Seasons
+	}
+	return paths.Seasons + "/" + f.SeasonID
+}
+
+func (f SeasonForm) Title() string {
+	if f.IsNew() {
+		return labels.SeasonsNewTitle
+	}
+	return labels.SeasonsEditTitle
+}
+
+templ Season(form SeasonForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	{{ form.Chrome.Current = labels.SeasonsTitle }}
+	@shared.Page(form.Title(), form.Chrome) {
+		<main class="mx-auto w-full max-w-xl px-6 py-10">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">{ form.Title() }</h1>
+			@shared.FormAlert(form.Alert)
+			@shared.FormNotice(form.Notice)
+			<form method="post" action={ templ.SafeURL(form.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
+				@shared.FormField(shared.FieldProps{
+					Name:    FieldSeasonName,
+					Label:   labels.SeasonsName,
+					Hint:    labels.SeasonsNameHint,
+					Message: messages[FieldSeasonName],
+				}) {
+					@input.Input(input.Props{
+						ID:         FieldSeasonName,
+						Name:       FieldSeasonName,
+						Value:      form.Name,
+						HasError:   messages[FieldSeasonName] != "",
+						Attributes: templ.Attributes{"autocomplete": "off", "autofocus": true},
+					})
+				}
+				@shared.FormField(shared.FieldProps{
+					Name:    FieldSeasonStart,
+					Label:   labels.SeasonsStart,
+					Hint:    labels.SeasonsStartHint,
+					Message: messages[FieldSeasonStart],
+				}) {
+					@input.Input(input.Props{
+						ID:       FieldSeasonStart,
+						Name:     FieldSeasonStart,
+						Type:     input.TypeDate,
+						Value:    form.StartDate,
+						HasError: messages[FieldSeasonStart] != "",
+					})
+				}
+				if !form.IsNew() {
+					@shared.ActiveBox(FieldSeasonActive, form.Active)
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+					{ labels.ActionSave }
+				}
+			</form>
+			<div class="mt-4">
+				@button.Button(button.Props{Href: paths.Seasons, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.ActionBackToList }
+				}
+			</div>
+			if !form.IsNew() {
+				@shared.AuditTrail(form.Trail)
+			}
+		</main>
+	}
+}

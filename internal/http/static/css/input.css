@@ -5,7 +5,7 @@
 
 /* Automatic content detection is off (source(none)) so that ./app.css and
    ./bin are never scanned. These two globs are where classes actually live:
-   our own templ files, and the templUI components vendored under views/ui. */
+   our own templ files, and the templUI components vendored under shared/ui. */
 @source "../../../../internal/**/*.templ";
 @source "../../../../internal/**/*_templ.go";
 

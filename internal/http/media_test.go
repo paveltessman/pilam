@@ -1,4 +1,4 @@
-package http
+package http_test
 
 import (
 	"net/http"
@@ -6,19 +6,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/paveltessman/pilam/internal/http/testkit"
 	"github.com/paveltessman/pilam/internal/platform/media"
 )
 
 const pngFixture = "\x89PNG\r\n\x1a\n" + "and the rest of a png"
 
 func TestMediaIsServedWithItsOwnTypeAndAnImmutableCache(t *testing.T) {
-	deps := deps(t)
+	deps := testkit.NewDeps(t)
 	stored, err := deps.Media.Put(t.Context(), media.Blob{Kind: media.Image, Content: strings.NewReader(pngFixture)})
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 
-	rec := getWith(t, deps, deps.Media.URL(stored.Key))
+	rec := testkit.GetWith(t, deps, deps.Media.URL(stored.Key))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -29,7 +30,7 @@ func TestMediaIsServedWithItsOwnTypeAndAnImmutableCache(t *testing.T) {
 	for header, want := range map[string]string{
 		"Content-Type":           "image/png",
 		"Content-Length":         strconv.Itoa(len(pngFixture)),
-		"Cache-Control":          mediaCacheControl,
+		"Cache-Control":          "public, max-age=31536000, immutable",
 		"X-Content-Type-Options": "nosniff",
 	} {
 		if got := rec.Header().Get(header); got != want {
@@ -47,7 +48,7 @@ func TestMediaIs404ForAnythingThatDoesNotNameAFile(t *testing.T) {
 	}
 	for name, target := range testData {
 		t.Run(name, func(t *testing.T) {
-			if rec := get(t, target); rec.Code != http.StatusNotFound {
+			if rec := testkit.Get(t, target); rec.Code != http.StatusNotFound {
 				t.Errorf("status = %d, want %d", rec.Code, http.StatusNotFound)
 			}
 		})
