@@ -30,8 +30,8 @@ func ShowTypes(milestoneSvc *milestone.Service) http.HandlerFunc {
 			return
 		}
 
-		page := views.MilestoneTypesPage{Chrome: shared.Chrome(ctx), Types: types}
-		shared.Render(w, r, http.StatusOK, views.MilestoneTypes(page))
+		page := views.MilestonesPage{Chrome: shared.Chrome(ctx), Types: types}
+		shared.Render(w, r, http.StatusOK, views.Milestones(page))
 	}
 	return handler
 }
@@ -59,11 +59,11 @@ func CreateType(milestoneSvc *milestone.Service) http.HandlerFunc {
 			Description: form.Description,
 		})
 		if errors.Is(err, milestone.ErrNameTaken) {
-			err = validate.Fail(views.FieldMilestoneTypeName, validate.Taken)
+			err = validate.Fail(views.FieldName, validate.Taken)
 		}
 		if err == nil {
 			logger.Info("milestone type created", "type", milestoneType.ID, "name", milestoneType.Name)
-			shared.RedirectSaved(w, r, paths.MilestoneTypes+"/"+milestoneType.ID.String())
+			shared.RedirectSaved(w, r, paths.Milestones+"/"+milestoneType.ID.String())
 			return
 		}
 
@@ -126,11 +126,11 @@ func SaveType(milestoneSvc *milestone.Service, authSvc *auth.Service, log *audit
 			Active:      form.Active,
 		})
 		if errors.Is(err, milestone.ErrNameTaken) {
-			err = validate.Fail(views.FieldMilestoneTypeName, validate.Taken)
+			err = validate.Fail(views.FieldName, validate.Taken)
 		}
 		if err == nil {
 			logger.Info("milestone type updated", "type", milestoneType.ID)
-			shared.RedirectSaved(w, r, paths.MilestoneTypes+"/"+form.TypeID)
+			shared.RedirectSaved(w, r, paths.Milestones+"/"+form.TypeID)
 			return
 		}
 
@@ -188,9 +188,9 @@ func loadType(w http.ResponseWriter, r *http.Request, milestoneSvc *milestone.Se
 // The service checks the values: this only carries them.
 func submittedType(r *http.Request) views.MilestoneTypeForm {
 	form := views.MilestoneTypeForm{
-		Name:        r.PostFormValue(views.FieldMilestoneTypeName),
-		Description: r.PostFormValue(views.FieldMilestoneTypeDescription),
-		Active:      shared.PostedFlag(r, views.FieldMilestoneTypeActive),
+		Name:        r.PostFormValue(views.FieldName),
+		Description: r.PostFormValue(views.FieldDescription),
+		Active:      shared.PostedFlag(r, views.FieldActive),
 	}
 	return form
 }

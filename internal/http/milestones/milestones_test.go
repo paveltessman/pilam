@@ -16,21 +16,21 @@ import (
 )
 
 var typeRoutes = []testkit.Route{
-	{Method: http.MethodGet, Path: paths.MilestoneTypes},
-	{Method: http.MethodPost, Path: paths.MilestoneTypes},
-	{Method: http.MethodGet, Path: paths.MilestoneTypes + "/new"},
-	{Method: http.MethodGet, Path: paths.MilestoneTypes + "/" + testkit.MissingID.String()},
-	{Method: http.MethodPost, Path: paths.MilestoneTypes + "/" + testkit.MissingID.String()},
+	{Method: http.MethodGet, Path: paths.Milestones},
+	{Method: http.MethodPost, Path: paths.Milestones},
+	{Method: http.MethodGet, Path: paths.Milestones + "/new"},
+	{Method: http.MethodGet, Path: paths.Milestones + "/" + testkit.MissingID.String()},
+	{Method: http.MethodPost, Path: paths.Milestones + "/" + testkit.MissingID.String()},
 }
 
 // typeForm is what the create and the edit screen post.
 func typeForm(name, description string, active bool) url.Values {
 	form := url.Values{
-		views.FieldMilestoneTypeName:        {name},
-		views.FieldMilestoneTypeDescription: {description},
+		views.FieldName:        {name},
+		views.FieldDescription: {description},
 	}
 	if active {
-		form.Set(views.FieldMilestoneTypeActive, "true")
+		form.Set(views.FieldActive, "true")
 	}
 	return form
 }
@@ -39,18 +39,18 @@ func typeForm(name, description string, active bool) url.Values {
 func createdType(t *testing.T, d testkit.Deps, cookie *http.Cookie, name, description string) string {
 	t.Helper()
 
-	rec := testkit.PostAs(t, d, paths.MilestoneTypes, typeForm(name, description, true), cookie)
+	rec := testkit.PostAs(t, d, paths.Milestones, typeForm(name, description, true), cookie)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("creating type %q: status = %d, want %d: %s", name, rec.Code, http.StatusSeeOther, rec.Body)
 	}
-	return testkit.IDOfRedirect(t, rec, paths.MilestoneTypes)
+	return testkit.IDOfRedirect(t, rec, paths.Milestones)
 }
 
 func TestMilestoneTypeScreenNamesFieldsThatServiceRejects(t *testing.T) {
 	pairs := [][2]string{
-		{views.FieldMilestoneTypeName, milestone.FieldName},
-		{views.FieldMilestoneTypeDescription, milestone.FieldDescription},
-		{views.FieldMilestoneTypeActive, milestone.FieldActive},
+		{views.FieldName, milestone.FieldName},
+		{views.FieldDescription, milestone.FieldDescription},
+		{views.FieldActive, milestone.FieldActive},
 	}
 	for _, pair := range pairs {
 		if pair[0] != pair[1] {
@@ -88,7 +88,7 @@ func TestMilestoneTypesSectionNeedsLogin(t *testing.T) {
 
 func TestNavOffersMilestoneTypesToRootOnly(t *testing.T) {
 	d := testkit.NewDeps(t)
-	link := `href="` + paths.MilestoneTypes + `"`
+	link := `href="` + paths.Milestones + `"`
 
 	root := testkit.GetAs(t, d, paths.Models, testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)).Body.String()
 	testkit.Wants(t, root, link)
@@ -103,7 +103,7 @@ func TestMilestoneTypesListIsEmptyBeforeAnyType(t *testing.T) {
 	d := testkit.NewDeps(t)
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
-	rec := testkit.GetAs(t, d, paths.MilestoneTypes, cookie)
+	rec := testkit.GetAs(t, d, paths.Milestones, cookie)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -117,7 +117,7 @@ func TestMilestoneTypesListOrdersByShortName(t *testing.T) {
 	createdType(t, d, cookie, "Production", "Sample ready")
 	createdType(t, d, cookie, "Fabric order", "Fabric ordered")
 
-	body := testkit.GetAs(t, d, paths.MilestoneTypes, cookie).Body.String()
+	body := testkit.GetAs(t, d, paths.Milestones, cookie).Body.String()
 	testkit.Wants(t, body, "Production", "Fabric order", "Sample ready", "Fabric ordered")
 
 	if strings.Index(body, "Fabric order") > strings.Index(body, "Production") {
@@ -147,7 +147,7 @@ func TestMilestoneTypeCreateRejectsAnEmptyForm(t *testing.T) {
 	d, trail := testkit.AuditedDeps(t)
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
-	rec := testkit.PostAs(t, d, paths.MilestoneTypes, typeForm("", "", true), cookie)
+	rec := testkit.PostAs(t, d, paths.Milestones, typeForm("", "", true), cookie)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
 	}
@@ -163,7 +163,7 @@ func TestMilestoneTypeCreateRejectsNameAlreadyHeld(t *testing.T) {
 
 	createdType(t, d, cookie, "Production", "Sample ready")
 
-	rec := testkit.PostAs(t, d, paths.MilestoneTypes, typeForm("production", "Second sample", true), cookie)
+	rec := testkit.PostAs(t, d, paths.Milestones, typeForm("production", "Second sample", true), cookie)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
 	}
@@ -175,7 +175,7 @@ func TestMilestoneTypeCardReportsWhatItSaved(t *testing.T) {
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
 	id := createdType(t, d, cookie, "Production", "Sample ready")
-	path := paths.MilestoneTypes + "/" + id
+	path := paths.Milestones + "/" + id
 
 	testkit.Wants(t, testkit.GetAs(t, d, path+"?saved=1", cookie).Body.String(), labels.Saved)
 	if body := testkit.GetAs(t, d, path, cookie).Body.String(); strings.Contains(body, labels.Saved) {
@@ -188,7 +188,7 @@ func TestMilestoneTypeEditWritesNameAndDescription(t *testing.T) {
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
 	id := createdType(t, d, cookie, "Production", "Sample ready")
-	path := paths.MilestoneTypes + "/" + id
+	path := paths.Milestones + "/" + id
 
 	rec := testkit.PostAs(t, d, path, typeForm("Sample", "Sample accepted", true), cookie)
 	if rec.Code != http.StatusSeeOther {
@@ -210,12 +210,12 @@ func TestMilestoneTypeEditRetiresType(t *testing.T) {
 
 	id := createdType(t, d, cookie, "Production", "Sample ready")
 
-	rec := testkit.PostAs(t, d, paths.MilestoneTypes+"/"+id, typeForm("Production", "Sample ready", false), cookie)
+	rec := testkit.PostAs(t, d, paths.Milestones+"/"+id, typeForm("Production", "Sample ready", false), cookie)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
 
-	testkit.Wants(t, testkit.GetAs(t, d, paths.MilestoneTypes, cookie).Body.String(), "Production", labels.StateInactive)
+	testkit.Wants(t, testkit.GetAs(t, d, paths.Milestones, cookie).Body.String(), "Production", labels.StateInactive)
 
 	actions := testkit.ActionsOf(testkit.EntriesOf(t, trail, audit.EntityMilestoneType, id))
 	if len(actions) != 2 || actions[0] != audit.ActionDeactivated {
@@ -231,7 +231,7 @@ func TestMilestoneTypeEditThatMovesNothingWritesNothing(t *testing.T) {
 
 	id := createdType(t, d, cookie, "Production", "Sample ready")
 
-	rec := testkit.PostAs(t, d, paths.MilestoneTypes+"/"+id, typeForm("Production", "Sample ready", true), cookie)
+	rec := testkit.PostAs(t, d, paths.Milestones+"/"+id, typeForm("Production", "Sample ready", true), cookie)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusSeeOther)
 	}
@@ -245,8 +245,8 @@ func TestMilestoneTypeScreensAnswer404ForATypeThatIsNotThere(t *testing.T) {
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
 	for _, path := range []string{
-		paths.MilestoneTypes + "/" + testkit.MissingID.String(),
-		paths.MilestoneTypes + "/not-an-id",
+		paths.Milestones + "/" + testkit.MissingID.String(),
+		paths.Milestones + "/not-an-id",
 	} {
 		if rec := testkit.GetAs(t, d, path, cookie); rec.Code != http.StatusNotFound {
 			t.Errorf("GET %s status = %d, want %d", path, rec.Code, http.StatusNotFound)
@@ -265,7 +265,7 @@ func TestMilestoneTypeCardShowsTheAuditTrail(t *testing.T) {
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
 	id := createdType(t, d, cookie, "Production", "Sample ready")
-	path := paths.MilestoneTypes + "/" + id
+	path := paths.Milestones + "/" + id
 
 	rec := testkit.PostAs(t, d, path, typeForm("Sample", "Sample accepted", false), cookie)
 	if rec.Code != http.StatusSeeOther {
@@ -304,7 +304,7 @@ func TestRefusedMilestoneTypeEditKeepsTheTrailOnTheCard(t *testing.T) {
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
 	id := createdType(t, d, cookie, "Production", "Sample ready")
-	path := paths.MilestoneTypes + "/" + id
+	path := paths.Milestones + "/" + id
 
 	rec := testkit.PostAs(t, d, path, typeForm("", "Sample ready", true), cookie)
 	if rec.Code != http.StatusUnprocessableEntity {

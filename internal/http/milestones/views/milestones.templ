@@ -12,24 +12,24 @@ import (
 )
 
 const (
-	FieldMilestoneTypeName        = "name"
-	FieldMilestoneTypeDescription = "description"
-	FieldMilestoneTypeActive      = "active"
+	FieldName        = "name"
+	FieldDescription = "description"
+	FieldActive      = "active"
 )
 
-// MilestoneTypesPage is the list: every type, active and retired, by short name.
-type MilestoneTypesPage struct {
+// MilestonesPage is the list: every type, active and retired, by short name.
+type MilestonesPage struct {
 	Chrome shared.Chrome
 	Types  []milestone.Type
 }
 
-templ MilestoneTypes(page MilestoneTypesPage) {
+templ Milestones(page MilestonesPage) {
 	{{ page.Chrome.Current = labels.MilestoneTypesTitle }}
 	@shared.Page(labels.MilestoneTypesTitle, page.Chrome) {
 		<main class="mx-auto w-full max-w-5xl px-6 py-10">
 			<div class="mb-6 flex items-center gap-4">
 				<h1 class="text-2xl font-semibold tracking-tight">{ labels.MilestoneTypesTitle }</h1>
-				@button.Button(button.Props{Href: paths.MilestoneTypes + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
+				@button.Button(button.Props{Href: paths.Milestones + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
 					{ labels.ActionAddMilestoneType }
 				}
 			</div>
@@ -60,7 +60,7 @@ templ MilestoneTypes(page MilestoneTypesPage) {
 templ milestoneTypeRow(milestoneType milestone.Type) {
 	<tr class="border-b last:border-0 hover:bg-muted/50">
 		<td class="px-4 py-3 whitespace-nowrap">
-			<a href={ templ.SafeURL(paths.MilestoneTypes + "/" + milestoneType.ID.String()) } class="font-medium underline-offset-4 hover:underline">
+			<a href={ templ.SafeURL(paths.Milestones + "/" + milestoneType.ID.String()) } class="font-medium underline-offset-4 hover:underline">
 				{ milestoneType.Name }
 			</a>
 		</td>
@@ -107,9 +107,9 @@ func (f MilestoneTypeForm) IsNew() bool { return f.TypeID == "" }
 // Action is where the form posts.
 func (f MilestoneTypeForm) Action() string {
 	if f.IsNew() {
-		return paths.MilestoneTypes
+		return paths.Milestones
 	}
-	return paths.MilestoneTypes + "/" + f.TypeID
+	return paths.Milestones + "/" + f.TypeID
 }
 
 func (f MilestoneTypeForm) Title() string {
@@ -129,42 +129,42 @@ templ MilestoneType(form MilestoneTypeForm) {
 			@shared.FormNotice(form.Notice)
 			<form method="post" action={ templ.SafeURL(form.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
 				@shared.FormField(shared.FieldProps{
-					Name:    FieldMilestoneTypeName,
+					Name:    FieldName,
 					Label:   labels.MilestoneTypesName,
 					Hint:    labels.MilestoneTypesNameHint,
-					Message: messages[FieldMilestoneTypeName],
+					Message: messages[FieldName],
 				}) {
 					@input.Input(input.Props{
-						ID:         FieldMilestoneTypeName,
-						Name:       FieldMilestoneTypeName,
+						ID:         FieldName,
+						Name:       FieldName,
 						Value:      form.Name,
-						HasError:   messages[FieldMilestoneTypeName] != "",
+						HasError:   messages[FieldName] != "",
 						Attributes: templ.Attributes{"autocomplete": "off", "autofocus": true},
 					})
 				}
 				@shared.FormField(shared.FieldProps{
-					Name:    FieldMilestoneTypeDescription,
+					Name:    FieldDescription,
 					Label:   labels.MilestoneTypesDescription,
 					Hint:    labels.MilestoneTypesDescriptionHint,
-					Message: messages[FieldMilestoneTypeDescription],
+					Message: messages[FieldDescription],
 				}) {
 					@input.Input(input.Props{
-						ID:         FieldMilestoneTypeDescription,
-						Name:       FieldMilestoneTypeDescription,
+						ID:         FieldDescription,
+						Name:       FieldDescription,
 						Value:      form.Description,
-						HasError:   messages[FieldMilestoneTypeDescription] != "",
+						HasError:   messages[FieldDescription] != "",
 						Attributes: templ.Attributes{"autocomplete": "off"},
 					})
 				}
 				if !form.IsNew() {
-					@shared.ActiveBox(FieldMilestoneTypeActive, form.Active)
+					@shared.ActiveBox(FieldActive, form.Active)
 				}
 				@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
 					{ labels.ActionSave }
 				}
 			</form>
 			<div class="mt-4">
-				@button.Button(button.Props{Href: paths.MilestoneTypes, Variant: button.VariantGhost, Size: button.SizeSm}) {
+				@button.Button(button.Props{Href: paths.Milestones, Variant: button.VariantGhost, Size: button.SizeSm}) {
 					{ labels.ActionBackToList }
 				}
 			</div>

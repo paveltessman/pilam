@@ -48,7 +48,7 @@ const (
 
 // The milestone screens.
 const (
-	MilestoneTypes   = "/milestone-types"
-	MilestoneTypeNew = MilestoneTypes + "/new"
-	MilestoneType    = MilestoneTypes + "/{id}"
+	Milestones       = "/milestones"
+	MilestoneTypeNew = Milestones + "/new"
+	MilestoneType    = Milestones + "/{id}"
 )

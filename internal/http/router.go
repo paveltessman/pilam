@@ -127,8 +127,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+paths.Drop, root(drops.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+paths.Drop, root(drops.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
-	mux.Handle("GET "+paths.MilestoneTypes, root(milestones.ShowTypes(deps.MilestoneSvc)))
-	mux.Handle("POST "+paths.MilestoneTypes, root(milestones.CreateType(deps.MilestoneSvc)))
+	mux.Handle("GET "+paths.Milestones, root(milestones.ShowTypes(deps.MilestoneSvc)))
+	mux.Handle("POST "+paths.Milestones, root(milestones.CreateType(deps.MilestoneSvc)))
 	mux.Handle("GET "+paths.MilestoneTypeNew, root(milestones.ShowNewType()))
 	mux.Handle("GET "+paths.MilestoneType, root(milestones.ShowType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+paths.MilestoneType, root(milestones.SaveType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
