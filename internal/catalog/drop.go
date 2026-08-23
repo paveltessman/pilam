@@ -95,7 +95,7 @@ func (s *Service) CreateDrop(ctx context.Context, in DropCreateParams) (Drop, er
 		if err := s.drops.Create(ctx, drop); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntityDrop, drop.ID, audit.ActionCreated, "", "", drop.Name))
+		return s.RecordTrail(ctx, change(audit.EntityDrop, drop.ID, audit.ActionCreated, "", "", drop.Name))
 	}
 	if err := s.atomic.InTx(ctx, write); err != nil {
 		return Drop{}, err
@@ -132,7 +132,7 @@ func (s *Service) UpdateDrop(ctx context.Context, dropID ids.ID, in DropUpdatePa
 		drop.TargetDate = target
 	}
 	if in.Active != drop.Active {
-		changes = append(changes, change(audit.EntityDrop, drop.ID, activation(in.Active), FieldActive,
+		changes = append(changes, change(audit.EntityDrop, drop.ID, audit.Activation(in.Active), FieldActive,
 			strconv.FormatBool(drop.Active), strconv.FormatBool(in.Active)))
 		drop.Active = in.Active
 	}
@@ -144,6 +144,6 @@ func (s *Service) UpdateDrop(ctx context.Context, dropID ids.ID, in DropUpdatePa
 		if err := s.drops.Update(ctx, drop); err != nil {
 			return err
 		}
-		return s.record(ctx, changes...)
+		return s.RecordTrail(ctx, changes...)
 	})
 }

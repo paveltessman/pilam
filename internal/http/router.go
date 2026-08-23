@@ -12,6 +12,7 @@ import (
 	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/http/middleware"
 	"github.com/paveltessman/pilam/internal/http/static"
+	"github.com/paveltessman/pilam/internal/milestone"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 	"github.com/paveltessman/pilam/internal/platform/media"
@@ -27,14 +28,15 @@ type Pinger interface {
 }
 
 type Deps struct {
-	DB         Pinger
-	Logger     *slog.Logger
-	IDs        ids.Generator
-	Media      media.Store
-	SessionMgr *session.Manager
-	AuthSvc    *auth.Service
-	CatalogSvc *catalog.Service
-	AuditLog   *audit.Log
+	DB           Pinger
+	Logger       *slog.Logger
+	IDs          ids.Generator
+	Media        media.Store
+	SessionMgr   *session.Manager
+	AuthSvc      *auth.Service
+	CatalogSvc   *catalog.Service
+	MilestoneSvc *milestone.Service
+	AuditLog     *audit.Log
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -53,6 +55,8 @@ func NewRouter(deps Deps) http.Handler {
 		panic("http: nil auth service")
 	case deps.CatalogSvc == nil:
 		panic("http: nil catalog service")
+	case deps.MilestoneSvc == nil:
+		panic("http: nil milestone service")
 	case deps.AuditLog == nil:
 		panic("http: nil audit log")
 	}
@@ -110,6 +114,12 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+dropNewPath, root(showNewDrop(deps.CatalogSvc)))
 	mux.Handle("GET "+dropPath, root(showDrop(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+dropPath, root(saveDrop(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
+
+	mux.Handle("GET "+milestoneTypesPath, root(showMilestoneTypes(deps.MilestoneSvc)))
+	mux.Handle("POST "+milestoneTypesPath, root(createMilestoneType(deps.MilestoneSvc)))
+	mux.Handle("GET "+milestoneTypeNewPath, root(showNewMilestoneType()))
+	mux.Handle("GET "+milestoneTypePath, root(showMilestoneType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+milestoneTypePath, root(saveMilestoneType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;

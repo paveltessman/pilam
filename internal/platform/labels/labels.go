@@ -8,26 +8,28 @@ import "github.com/paveltessman/pilam/internal/platform/password"
 const (
 	NavExceptions = "Отставания"
 	NavSeasons    = "Сезоны"
+	NavMilestones = "Этапы"
 	NavDrops      = "Дропы"
 	NavUsers      = "Пользователи"
 	NavLogOut     = "Выйти"
 )
 
 const (
-	ActionSave        = "Сохранить"
-	ActionCancel      = "Отмена"
-	ActionAddColorway = "Добавить цвет"
-	ActionAddPhoto    = "Добавить фото"
-	ActionSearch      = "Поиск"
-	ActionFilter      = "Фильтры"
-	ActionMarkDone    = "Отметить выполненным"
-	ActionLogIn       = "Войти"
-	ActionAddUser     = "Новый пользователь"
-	ActionAddSeason   = "Новый сезон"
-	ActionAddDrop     = "Новый дроп"
-	ActionAddModel    = "Новая модель"
-	ActionResetPasswd = "Сбросить пароль"
-	ActionBackToList  = "Назад к списку"
+	ActionSave             = "Сохранить"
+	ActionCancel           = "Отмена"
+	ActionAddColorway      = "Добавить цвет"
+	ActionAddPhoto         = "Добавить фото"
+	ActionSearch           = "Поиск"
+	ActionFilter           = "Фильтры"
+	ActionMarkDone         = "Отметить выполненным"
+	ActionLogIn            = "Войти"
+	ActionAddUser          = "Новый пользователь"
+	ActionAddSeason        = "Новый сезон"
+	ActionAddDrop          = "Новый дроп"
+	ActionAddModel         = "Новая модель"
+	ActionAddMilestoneType = "Новый этап"
+	ActionResetPasswd      = "Сбросить пароль"
+	ActionBackToList       = "Назад к списку"
 )
 
 // Common  strings that are used across ddifferent screens.
@@ -203,6 +205,22 @@ const (
 	ModelsAuditPhotoAdded   = "Фото добавлено"
 	ModelsAuditPhotoRemoved = "Фото удалено"
 	ModelsAuditPhotoReorder = "Порядок фотографий изменён"
+)
+
+// The milestone types section
+const (
+	MilestoneTypesTitle     = "Этапы"
+	MilestoneTypesNewTitle  = "Новый этап"
+	MilestoneTypesEditTitle = "Карточка этапа"
+	MilestoneTypesEmpty     = "Этапов пока нет."
+
+	MilestoneTypesName            = "Название"
+	MilestoneTypesNameHint        = "Например, «Отшив»."
+	MilestoneTypesDescription     = "Описание"
+	MilestoneTypesDescriptionHint = "Краткое описание этапа."
+
+	MilestoneTypesAuditCreated     = "Этап создан"
+	MilestoneTypesAuditDescription = "Описание изменено"
 )
 
 // The failures in the http middleware chain

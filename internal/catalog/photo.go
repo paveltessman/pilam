@@ -86,7 +86,7 @@ func (s *Service) AddPhoto(ctx context.Context, modelID ids.ID, key media.Key) (
 		if err := s.photos.Add(ctx, photo); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntityModel, modelID, audit.ActionPhotoAdded, FieldPhoto, "", string(key)))
+		return s.RecordTrail(ctx, change(audit.EntityModel, modelID, audit.ActionPhotoAdded, FieldPhoto, "", string(key)))
 	}
 	if err := s.atomic.InTx(ctx, write); err != nil {
 		return Photo{}, err
@@ -117,7 +117,7 @@ func (s *Service) RemovePhoto(ctx context.Context, modelID, photoID ids.ID) erro
 		if err := s.photos.Reorder(ctx, identifiers(left)); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntityModel, modelID, audit.ActionPhotoRemoved, FieldPhoto,
+		return s.RecordTrail(ctx, change(audit.EntityModel, modelID, audit.ActionPhotoRemoved, FieldPhoto,
 			string(removed.MediaKey), ""))
 	}
 	return s.atomic.InTx(ctx, write)
@@ -147,7 +147,7 @@ func (s *Service) ReorderPhotos(ctx context.Context, modelID ids.ID, ordered []i
 		if err := s.photos.Reorder(ctx, ordered); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntityModel, modelID, audit.ActionPhotoReordered, FieldPhotoOrder,
+		return s.RecordTrail(ctx, change(audit.EntityModel, modelID, audit.ActionPhotoReordered, FieldPhotoOrder,
 			join(was), join(ordered)))
 	}
 	return s.atomic.InTx(ctx, write)

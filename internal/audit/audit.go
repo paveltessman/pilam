@@ -20,10 +20,11 @@ import (
 // screen, a removed photo has no screen to read it on, and one reorder moves
 // the whole strip at once. So a photo change is a change of the model.
 const (
-	EntityUser   = "user"
-	EntitySeason = "season"
-	EntityDrop   = "drop"
-	EntityModel  = "model"
+	EntityUser          = "user"
+	EntitySeason        = "season"
+	EntityDrop          = "drop"
+	EntityModel         = "model"
+	EntityMilestoneType = "milestone_type"
 )
 
 // The actions the trail names.

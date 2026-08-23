@@ -37,12 +37,13 @@ func deps(t *testing.T) Deps {
 func baseDeps(t *testing.T) Deps {
 	t.Helper()
 	d := Deps{
-		DB:         stubPinger{},
-		Logger:     logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
-		IDs:        ids.NewGenerator(),
-		Media:      mediaStore(t),
-		SessionMgr: session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
-		CatalogSvc: catalogServiceOn(t, &recorded{}),
+		DB:           stubPinger{},
+		Logger:       logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
+		IDs:          ids.NewGenerator(),
+		Media:        mediaStore(t),
+		SessionMgr:   session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
+		CatalogSvc:   catalogServiceOn(t, &recorded{}),
+		MilestoneSvc: milestoneServiceOn(t, &recorded{}),
 	}
 	return d
 }

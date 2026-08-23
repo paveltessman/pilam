@@ -86,7 +86,7 @@ func (s *Service) CreateSeason(ctx context.Context, in SeasonCreateParams) (Seas
 		if err := s.seasons.Create(ctx, season); err != nil {
 			return err
 		}
-		return s.record(ctx, change(audit.EntitySeason, season.ID, audit.ActionCreated, "", "", season.Name))
+		return s.RecordTrail(ctx, change(audit.EntitySeason, season.ID, audit.ActionCreated, "", "", season.Name))
 	}
 	if err := s.atomic.InTx(ctx, write); err != nil {
 		return Season{}, err
@@ -123,7 +123,7 @@ func (s *Service) UpdateSeason(ctx context.Context, seasonID ids.ID, in SeasonUp
 		season.StartDate = start
 	}
 	if in.Active != season.Active {
-		changes = append(changes, change(audit.EntitySeason, season.ID, activation(in.Active), FieldActive,
+		changes = append(changes, change(audit.EntitySeason, season.ID, audit.Activation(in.Active), FieldActive,
 			strconv.FormatBool(season.Active), strconv.FormatBool(in.Active)))
 		season.Active = in.Active
 	}
@@ -135,7 +135,7 @@ func (s *Service) UpdateSeason(ctx context.Context, seasonID ids.ID, in SeasonUp
 		if err := s.seasons.Update(ctx, season); err != nil {
 			return err
 		}
-		return s.record(ctx, changes...)
+		return s.RecordTrail(ctx, changes...)
 	})
 	return err
 }
