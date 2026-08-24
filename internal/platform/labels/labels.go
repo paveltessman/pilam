@@ -183,6 +183,11 @@ const (
 	ModelsNoDrop      = "Сначала создайте сезон и дроп: модель существует внутри дропа."
 	ModelsSpineFixed  = "Модель"
 	ModelsFilterState = "Состояние"
+
+	// The critical path control of the create screen. It builds the calendar of
+	// the new model, and it offers the choice that builds none.
+	ModelsTemplateHint = "Этапы будут рассчитаны от плановой даты дропа."
+	ModelsNoCalendar   = "Без критического пути"
 )
 
 // The photo strip of the model card.

@@ -254,18 +254,21 @@ templ modelThumbnail(row ModelRow) {
 	}
 }
 
-// ModelForm is the 'create' screen: a season, a drop inside it, and an
-// article.
+// ModelForm is the 'create' screen: a season, a drop inside it, an article,
+// and the critical path the new model starts with.
 type ModelForm struct {
-	Chrome   shared.Chrome
-	SeasonID string
-	DropID   string
-	Article  string
+	Chrome     shared.Chrome
+	SeasonID   string
+	DropID     string
+	Article    string
+	TemplateID string
 
 	// The choices. Drops holds the drops of the chosen season, or of every
-	// season while no season is chosen.
-	Seasons []catalog.Season
-	Drops   []dropviews.DropGroup
+	// season while no season is chosen. Templates holds every active critical
+	// path, and it is empty while there is none.
+	Seasons   []catalog.Season
+	Drops     []dropviews.DropGroup
+	Templates []shared.SelectOption
 
 	Alert  string
 	Errors validate.FieldErrors
@@ -283,6 +286,17 @@ func (f ModelForm) seasonChoices() []shared.SelectOption {
 }
 
 func (f ModelForm) dropChoices() []shared.SelectGroup { return dropGroups(f.Drops) }
+
+// templateChoices is the critical path control: every active path, over the
+// choice that builds no calendar at all.
+func (f ModelForm) templateChoices() []shared.SelectOption {
+	choices := make([]shared.SelectOption, 0, len(f.Templates)+1)
+	choices = append(choices, shared.SelectOption{Value: "", Label: labels.ModelsNoCalendar})
+	return append(choices, f.Templates...)
+}
+
+// HasTemplate reports whether there is a critical path to start the model on.
+func (f ModelForm) HasTemplate() bool { return len(f.Templates) > 0 }
 
 // HasDrop reports whether there is a drop to put a model in.
 func (f ModelForm) HasDrop() bool {
@@ -325,6 +339,16 @@ templ NewModel(form ModelForm) {
 						</select>
 					}
 					@ModelDropField(form)
+					if form.HasTemplate() {
+						@shared.FormField(shared.FieldProps{
+							Name:    FieldMilestoneTemplate,
+							Label:   labels.MilestonesTemplate,
+							Hint:    labels.ModelsTemplateHint,
+							Message: messages[FieldMilestoneTemplate],
+						}) {
+							@shared.SelectBox(FieldMilestoneTemplate, form.templateChoices(), form.TemplateID, messages[FieldMilestoneTemplate] != "")
+						}
+					}
 					@shared.FormField(shared.FieldProps{
 						Name:    FieldModelArticle,
 						Label:   labels.ModelsArticle,

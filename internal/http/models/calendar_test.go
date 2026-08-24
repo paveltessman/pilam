@@ -513,3 +513,121 @@ func TestSavingARowThatIsNotThereIs404(t *testing.T) {
 		t.Errorf("status = %d, want %d: %s", rec.Code, http.StatusNotFound, rec.Body)
 	}
 }
+
+// A calendar from the create screen: the model takes a critical path the moment
+// it is written, and the card holds the dated steps.
+
+// aDefaultTemplate writes the critical path a new model starts on, with one
+// step per offset.
+func aDefaultTemplate(t *testing.T, d testkit.Deps, cookie *http.Cookie, name string, offsets ...string) string {
+	t.Helper()
+
+	templateID := testkit.CreatedDefaultMilestoneTemplate(t, d, cookie, name, "The chain")
+	for i, offset := range offsets {
+		step := testkit.CreatedMilestoneType(t, d, cookie, "step"+strconv.Itoa(i), "Step "+strconv.Itoa(i))
+		testkit.AddedTemplateItem(t, d, cookie, templateID, step, offset)
+	}
+	return templateID
+}
+
+// createForm is what the create screen posts, with the critical path the user
+// picked. An empty templateID is the choice that builds no calendar.
+func createForm(dropID, article, templateID string) url.Values {
+	form := modelForm(dropID, article, true)
+	form.Set(views.FieldMilestoneTemplate, templateID)
+	return form
+}
+
+func TestModelCreateOffersTheCriticalPathsAndPreselectsTheDefault(t *testing.T) {
+	d := testkit.NewDeps(t)
+	spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
+
+	air := testkit.CreatedMilestoneTemplate(t, d, cookie, "Import, air", "The fast chain")
+	rail := aDefaultTemplate(t, d, cookie, "Import, rail", "-270")
+
+	body := testkit.GetAs(t, d, paths.Models+"/new", cookie).Body.String()
+	testkit.Wants(t, body,
+		labels.MilestonesTemplate,
+		labels.ModelsTemplateHint,
+		labels.ModelsNoCalendar,
+		"Import, air",
+		"Import, rail",
+		// The default path stands in the control before the user reads it.
+		`value="`+rail+`" selected>`,
+	)
+	if strings.Contains(body, `value="`+air+`" selected>`) {
+		t.Error("the create screen preselects a path that is not the default one")
+	}
+}
+
+func TestModelCreateLeavesTheCriticalPathOutWhileThereIsNone(t *testing.T) {
+	d := testkit.NewDeps(t)
+	spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
+
+	body := testkit.GetAs(t, d, paths.Models+"/new", cookie).Body.String()
+	if strings.Contains(body, labels.ModelsNoCalendar) {
+		t.Error("the create screen offers a critical path control while there is no path")
+	}
+}
+
+func TestModelCreatedWithADefaultPathHoldsEveryStepDatedFromTheDrop(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
+	templateID := aDefaultTemplate(t, d, cookie, "Import, rail", "-270", "-14")
+
+	rec := testkit.PostAs(t, d, paths.Models, createForm(dropID, "A-200", templateID), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+	modelID := testkit.IDOfRedirect(t, rec, paths.Models)
+
+	target := date.MustParse(dropTarget)
+	testkit.Wants(t, section(t, testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()),
+		"step0", "step1",
+		`value="`+date.ISO(date.AddDays(target, -270))+`"`,
+		`value="`+date.ISO(date.AddDays(target, -14))+`"`,
+	)
+}
+
+func TestModelCreatedWithNoCalendarHoldsAnEmptySection(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
+	aDefaultTemplate(t, d, cookie, "Import, rail", "-270")
+
+	rec := testkit.PostAs(t, d, paths.Models, createForm(dropID, "A-200", ""), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+	modelID := testkit.IDOfRedirect(t, rec, paths.Models)
+
+	// The add control below the table names every step the model lacks, so the
+	// empty calendar is read off the dates and not off the step names.
+	table := section(t, testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String())
+	testkit.Wants(t, table, labels.MilestonesEmpty)
+	dated := date.ISO(date.AddDays(date.MustParse(dropTarget), -270))
+	if strings.Contains(table, `value="`+dated+`"`) {
+		t.Error("the model the user asked for with no calendar holds a step")
+	}
+}
+
+func TestModelCreateRefusesAPathThePickerDoesNotOfferAndWritesNoModel(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
+	aDefaultTemplate(t, d, cookie, "Import, rail", "-270")
+
+	form := createForm(dropID, "A-200", testkit.MissingID.String())
+	rec := testkit.PostAs(t, d, paths.Models, form, cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+	testkit.Wants(t, rec.Body.String(), testkit.Message(validate.NotAllowed))
+
+	if list := testkit.GetAs(t, d, paths.Models, cookie).Body.String(); strings.Contains(list, "A-200") {
+		t.Error("the refused create wrote a model")
+	}
+}

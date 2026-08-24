@@ -103,8 +103,21 @@ func MilestoneTemplateForm(name, description string, isDefault, active bool) url
 // template it wrote. The screen is root only.
 func CreatedMilestoneTemplate(t *testing.T, d Deps, cookie *http.Cookie, name, description string) string {
 	t.Helper()
+	return createdTemplate(t, d, cookie, name, description, false)
+}
 
-	form := MilestoneTemplateForm(name, description, false, true)
+// CreatedDefaultMilestoneTemplate writes the template a new model starts on.
+// One template is the default, so a second call moves the flag to the template
+// it writes.
+func CreatedDefaultMilestoneTemplate(t *testing.T, d Deps, cookie *http.Cookie, name, description string) string {
+	t.Helper()
+	return createdTemplate(t, d, cookie, name, description, true)
+}
+
+func createdTemplate(t *testing.T, d Deps, cookie *http.Cookie, name, description string, isDefault bool) string {
+	t.Helper()
+
+	form := MilestoneTemplateForm(name, description, isDefault, true)
 	rec := PostAs(t, d, paths.MilestoneTemplates, form, cookie)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("creating milestone template %q: status = %d, want %d: %s",
