@@ -11,27 +11,36 @@ import (
 	"github.com/paveltessman/pilam/internal/http/milestones/views"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	"github.com/paveltessman/pilam/internal/http/shared"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
-// ShowTypes lists every type, active and retired, by short name.
-func ShowTypes(milestoneSvc *milestone.Service) http.HandlerFunc {
+// ShowSection lists the templates a calendar is built from, and the types the
+// templates are built from. Both lists hold every row, active and retired.
+func ShowSection(milestoneSvc *milestones.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		logger := logging.FromContext(ctx)
 
-		types, err := milestoneSvc.ListTypes(ctx)
+		templates, err := milestoneSvc.ListTemplates(ctx)
 		if err != nil {
-			logging.FromContext(ctx).Error("listing milestone types failed", "err", err)
+			logger.Error("listing milestone templates failed", "err", err)
 			shared.WriteServerError(w)
 			return
 		}
 
-		page := views.MilestoneTypesPage{Chrome: shared.Chrome(ctx), Types: types}
-		shared.Render(w, r, http.StatusOK, views.MilestoneTypes(page))
+		types, err := milestoneSvc.ListTypes(ctx)
+		if err != nil {
+			logger.Error("listing milestone types failed", "err", err)
+			shared.WriteServerError(w)
+			return
+		}
+
+		page := views.MilestonesPage{Chrome: shared.Chrome(ctx), Types: types, Templates: templates}
+		shared.Render(w, r, http.StatusOK, views.Milestones(page))
 	}
 	return handler
 }
@@ -46,7 +55,7 @@ func ShowNewType() http.HandlerFunc {
 }
 
 // CreateType writes the type and opens the card of it.
-func CreateType(milestoneSvc *milestone.Service) http.HandlerFunc {
+func CreateType(milestoneSvc *milestones.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -54,12 +63,12 @@ func CreateType(milestoneSvc *milestone.Service) http.HandlerFunc {
 		form := submittedType(r)
 		form.Chrome = shared.Chrome(ctx)
 
-		milestoneType, err := milestoneSvc.CreateType(ctx, milestone.TypeCreateParams{
+		milestoneType, err := milestoneSvc.CreateType(ctx, milestones.TypeCreateParams{
 			Name:        form.Name,
 			Description: form.Description,
 		})
-		if errors.Is(err, milestone.ErrNameTaken) {
-			err = validate.Fail(views.FieldMilestoneTypeName, validate.Taken)
+		if errors.Is(err, milestones.ErrNameTaken) {
+			err = validate.Fail(views.FieldName, validate.Taken)
 		}
 		if err == nil {
 			logger.Info("milestone type created", "type", milestoneType.ID, "name", milestoneType.Name)
@@ -83,7 +92,7 @@ func CreateType(milestoneSvc *milestone.Service) http.HandlerFunc {
 
 // ShowType renders the edit form of one type, and the audit trail of
 // that type under it.
-func ShowType(milestoneSvc *milestone.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
+func ShowType(milestoneSvc *milestones.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		milestoneType, ok := loadType(w, r, milestoneSvc)
 		if !ok {
@@ -106,7 +115,7 @@ func ShowType(milestoneSvc *milestone.Service, authSvc *auth.Service, log *audit
 }
 
 // SaveType writes name, description and active flag.
-func SaveType(milestoneSvc *milestone.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
+func SaveType(milestoneSvc *milestones.Service, authSvc *auth.Service, log *audit.Log) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -120,13 +129,13 @@ func SaveType(milestoneSvc *milestone.Service, authSvc *auth.Service, log *audit
 		form.Chrome = shared.Chrome(ctx)
 		form.TypeID = milestoneType.ID.String()
 
-		err := milestoneSvc.UpdateType(ctx, milestoneType.ID, milestone.TypeUpdateParams{
+		err := milestoneSvc.UpdateType(ctx, milestoneType.ID, milestones.TypeUpdateParams{
 			Name:        form.Name,
 			Description: form.Description,
 			Active:      form.Active,
 		})
-		if errors.Is(err, milestone.ErrNameTaken) {
-			err = validate.Fail(views.FieldMilestoneTypeName, validate.Taken)
+		if errors.Is(err, milestones.ErrNameTaken) {
+			err = validate.Fail(views.FieldName, validate.Taken)
 		}
 		if err == nil {
 			logger.Info("milestone type updated", "type", milestoneType.ID)
@@ -158,7 +167,7 @@ func SaveType(milestoneSvc *milestone.Service, authSvc *auth.Service, log *audit
 // loadType reads the {id} of the route and returns the type it names.
 // It answers 404 itself for an unreadable id and for a type that is not there,
 // and then reports false.
-func loadType(w http.ResponseWriter, r *http.Request, milestoneSvc *milestone.Service) (milestone.Type, bool) {
+func loadType(w http.ResponseWriter, r *http.Request, milestoneSvc *milestones.Service) (milestones.Type, bool) {
 	ctx := r.Context()
 	logger := logging.FromContext(ctx)
 
@@ -166,19 +175,19 @@ func loadType(w http.ResponseWriter, r *http.Request, milestoneSvc *milestone.Se
 	if err != nil {
 		logger.Info("the path names no readable milestone type id", "id", r.PathValue("id"))
 		http.NotFound(w, r)
-		return milestone.Type{}, false
+		return milestones.Type{}, false
 	}
 
 	milestoneType, err := milestoneSvc.Type(ctx, id)
-	if errors.Is(err, milestone.ErrNoType) {
+	if errors.Is(err, milestones.ErrNoType) {
 		logger.Info("no such milestone type", "type", id)
 		http.NotFound(w, r)
-		return milestone.Type{}, false
+		return milestones.Type{}, false
 	}
 	if err != nil {
 		logger.Error("loading a milestone type failed", "type", id, "err", err)
 		shared.WriteServerError(w)
-		return milestone.Type{}, false
+		return milestones.Type{}, false
 	}
 
 	return milestoneType, true
@@ -188,9 +197,9 @@ func loadType(w http.ResponseWriter, r *http.Request, milestoneSvc *milestone.Se
 // The service checks the values: this only carries them.
 func submittedType(r *http.Request) views.MilestoneTypeForm {
 	form := views.MilestoneTypeForm{
-		Name:        r.PostFormValue(views.FieldMilestoneTypeName),
-		Description: r.PostFormValue(views.FieldMilestoneTypeDescription),
-		Active:      shared.PostedFlag(r, views.FieldMilestoneTypeActive),
+		Name:        r.PostFormValue(views.FieldName),
+		Description: r.PostFormValue(views.FieldDescription),
+		Active:      shared.PostedFlag(r, views.FieldActive),
 	}
 	return form
 }

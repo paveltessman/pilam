@@ -46,9 +46,23 @@ const (
 	UserPass = User + "/password"
 )
 
-// The milestone screens.
+// The milestone screens. The section screen lists the templates and the types;
+// each of the two has its own create screen and its own card.
 const (
-	MilestoneTypes   = "/milestone-types"
+	Milestones = "/milestones"
+
+	MilestoneTypes   = Milestones + "/types"
 	MilestoneTypeNew = MilestoneTypes + "/new"
 	MilestoneType    = MilestoneTypes + "/{id}"
+
+	MilestoneTemplates   = Milestones + "/templates"
+	MilestoneTemplateNew = MilestoneTemplates + "/new"
+	MilestoneTemplate    = MilestoneTemplates + "/{id}"
+
+	// The items of one template. They carry no screen of their own: every one
+	// of these posts back to the template card.
+	MilestoneItems      = MilestoneTemplate + "/items"
+	MilestoneItemsOrder = MilestoneItems + "/order"
+	MilestoneItem       = MilestoneItems + "/{itemID}"
+	MilestoneItemRemove = MilestoneItem + "/remove"
 )

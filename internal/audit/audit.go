@@ -20,11 +20,12 @@ import (
 // screen, a removed photo has no screen to read it on, and one reorder moves
 // the whole strip at once. So a photo change is a change of the model.
 const (
-	EntityUser          = "user"
-	EntitySeason        = "season"
-	EntityDrop          = "drop"
-	EntityModel         = "model"
-	EntityMilestoneType = "milestone_type"
+	EntityUser              = "user"
+	EntitySeason            = "season"
+	EntityDrop              = "drop"
+	EntityModel             = "model"
+	EntityMilestoneType     = "milestone_type"
+	EntityMilestoneTemplate = "milestone_template"
 )
 
 // The actions the trail names.
@@ -41,6 +42,12 @@ const (
 	ActionPhotoAdded     = "photo_added"
 	ActionPhotoRemoved   = "photo_removed"
 	ActionPhotoReordered = "photo_reordered"
+
+	// The items of a milestone template. The item has no screen of its own, so
+	// its changes are recorded under the template.
+	ActionItemAdded      = "item_added"
+	ActionItemRemoved    = "item_removed"
+	ActionItemsReordered = "items_reordered"
 )
 
 // Marker stands in for a value the trail must not hold, such as a password. The

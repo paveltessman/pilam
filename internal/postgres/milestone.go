@@ -6,14 +6,22 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 )
 
-var _ milestone.Atomic = (*DB)(nil)
+var _ milestones.Atomic = (*DB)(nil)
 
 const (
 	milestoneTypeNameIndex = "milestone_type_name_key"
 	milestoneTypeIDIndex   = "milestone_type_pkey"
+
+	milestoneTemplateNameIndex    = "milestone_template_name_key"
+	milestoneTemplateDefaultIndex = "milestone_template_default_key"
+	milestoneTemplateIDIndex      = "milestone_template_pkey"
+
+	milestoneItemTypeIndex  = "milestone_template_item_type_key"
+	milestoneItemOrderIndex = "milestone_template_item_order_key"
+	milestoneItemIDIndex    = "milestone_template_item_pkey"
 )
 
 // duplicateError translates the duplicate constraint to domain errors.
@@ -24,10 +32,17 @@ func duplicateError(err error) error {
 	}
 
 	switch pgErr.ConstraintName {
-	case milestoneTypeNameIndex:
-		return fmt.Errorf("%w: %w", milestone.ErrNameTaken, err)
-	case milestoneTypeIDIndex:
-		return fmt.Errorf("%w: %w", milestone.ErrIDTaken, err)
+	case milestoneTypeNameIndex, milestoneTemplateNameIndex:
+		return fmt.Errorf("%w: %w", milestones.ErrNameTaken, err)
+	case milestoneItemTypeIndex:
+		return fmt.Errorf("%w: %w", milestones.ErrTypeInTemplate, err)
+	case milestoneTypeIDIndex, milestoneTemplateIDIndex, milestoneItemIDIndex:
+		return fmt.Errorf("%w: %w", milestones.ErrIDTaken, err)
+	case milestoneTemplateDefaultIndex, milestoneItemOrderIndex:
+		// The service holds both: it clears the default before it names a new
+		// one, and it writes a whole order inside one transaction. Reaching
+		// here is a bug in the service.
+		return err
 	default:
 		// Reaching this means there is a new constraint in the db
 		// that this function does not know about.

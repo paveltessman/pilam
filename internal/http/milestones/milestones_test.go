@@ -10,15 +10,15 @@ import (
 	"github.com/paveltessman/pilam/internal/http/milestones/views"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	"github.com/paveltessman/pilam/internal/http/testkit"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
 var typeRoutes = []testkit.Route{
-	{Method: http.MethodGet, Path: paths.MilestoneTypes},
+	{Method: http.MethodGet, Path: paths.Milestones},
 	{Method: http.MethodPost, Path: paths.MilestoneTypes},
-	{Method: http.MethodGet, Path: paths.MilestoneTypes + "/new"},
+	{Method: http.MethodGet, Path: paths.MilestoneTypeNew},
 	{Method: http.MethodGet, Path: paths.MilestoneTypes + "/" + testkit.MissingID.String()},
 	{Method: http.MethodPost, Path: paths.MilestoneTypes + "/" + testkit.MissingID.String()},
 }
@@ -26,11 +26,11 @@ var typeRoutes = []testkit.Route{
 // typeForm is what the create and the edit screen post.
 func typeForm(name, description string, active bool) url.Values {
 	form := url.Values{
-		views.FieldMilestoneTypeName:        {name},
-		views.FieldMilestoneTypeDescription: {description},
+		views.FieldName:        {name},
+		views.FieldDescription: {description},
 	}
 	if active {
-		form.Set(views.FieldMilestoneTypeActive, "true")
+		form.Set(views.FieldActive, "true")
 	}
 	return form
 }
@@ -48,9 +48,9 @@ func createdType(t *testing.T, d testkit.Deps, cookie *http.Cookie, name, descri
 
 func TestMilestoneTypeScreenNamesFieldsThatServiceRejects(t *testing.T) {
 	pairs := [][2]string{
-		{views.FieldMilestoneTypeName, milestone.FieldName},
-		{views.FieldMilestoneTypeDescription, milestone.FieldDescription},
-		{views.FieldMilestoneTypeActive, milestone.FieldActive},
+		{views.FieldName, milestones.FieldName},
+		{views.FieldDescription, milestones.FieldDescription},
+		{views.FieldActive, milestones.FieldActive},
 	}
 	for _, pair := range pairs {
 		if pair[0] != pair[1] {
@@ -88,7 +88,7 @@ func TestMilestoneTypesSectionNeedsLogin(t *testing.T) {
 
 func TestNavOffersMilestoneTypesToRootOnly(t *testing.T) {
 	d := testkit.NewDeps(t)
-	link := `href="` + paths.MilestoneTypes + `"`
+	link := `href="` + paths.Milestones + `"`
 
 	root := testkit.GetAs(t, d, paths.Models, testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)).Body.String()
 	testkit.Wants(t, root, link)
@@ -103,7 +103,7 @@ func TestMilestoneTypesListIsEmptyBeforeAnyType(t *testing.T) {
 	d := testkit.NewDeps(t)
 	cookie := testkit.LoggedIn(t, d, testkit.RootEmail, testkit.RootPasswd)
 
-	rec := testkit.GetAs(t, d, paths.MilestoneTypes, cookie)
+	rec := testkit.GetAs(t, d, paths.Milestones, cookie)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -117,7 +117,7 @@ func TestMilestoneTypesListOrdersByShortName(t *testing.T) {
 	createdType(t, d, cookie, "Production", "Sample ready")
 	createdType(t, d, cookie, "Fabric order", "Fabric ordered")
 
-	body := testkit.GetAs(t, d, paths.MilestoneTypes, cookie).Body.String()
+	body := testkit.GetAs(t, d, paths.Milestones, cookie).Body.String()
 	testkit.Wants(t, body, "Production", "Fabric order", "Sample ready", "Fabric ordered")
 
 	if strings.Index(body, "Fabric order") > strings.Index(body, "Production") {
@@ -215,7 +215,7 @@ func TestMilestoneTypeEditRetiresType(t *testing.T) {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
 
-	testkit.Wants(t, testkit.GetAs(t, d, paths.MilestoneTypes, cookie).Body.String(), "Production", labels.StateInactive)
+	testkit.Wants(t, testkit.GetAs(t, d, paths.Milestones, cookie).Body.String(), "Production", labels.StateInactive)
 
 	actions := testkit.ActionsOf(testkit.EntriesOf(t, trail, audit.EntityMilestoneType, id))
 	if len(actions) != 2 || actions[0] != audit.ActionDeactivated {

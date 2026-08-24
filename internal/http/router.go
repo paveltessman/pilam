@@ -17,14 +17,14 @@ import (
 	"github.com/paveltessman/pilam/internal/http/account"
 	"github.com/paveltessman/pilam/internal/http/drops"
 	"github.com/paveltessman/pilam/internal/http/middleware"
-	"github.com/paveltessman/pilam/internal/http/milestones"
+	milestoneshttp "github.com/paveltessman/pilam/internal/http/milestones"
 	"github.com/paveltessman/pilam/internal/http/models"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	"github.com/paveltessman/pilam/internal/http/seasons"
 	"github.com/paveltessman/pilam/internal/http/shared"
 	"github.com/paveltessman/pilam/internal/http/static"
 	"github.com/paveltessman/pilam/internal/http/users"
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/logging"
 	"github.com/paveltessman/pilam/internal/platform/media"
@@ -47,7 +47,7 @@ type Deps struct {
 	SessionMgr   *session.Manager
 	AuthSvc      *auth.Service
 	CatalogSvc   *catalog.Service
-	MilestoneSvc *milestone.Service
+	MilestoneSvc *milestones.Service
 	AuditLog     *audit.Log
 }
 
@@ -127,11 +127,20 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+paths.Drop, root(drops.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+paths.Drop, root(drops.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
-	mux.Handle("GET "+paths.MilestoneTypes, root(milestones.ShowTypes(deps.MilestoneSvc)))
-	mux.Handle("POST "+paths.MilestoneTypes, root(milestones.CreateType(deps.MilestoneSvc)))
-	mux.Handle("GET "+paths.MilestoneTypeNew, root(milestones.ShowNewType()))
-	mux.Handle("GET "+paths.MilestoneType, root(milestones.ShowType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
-	mux.Handle("POST "+paths.MilestoneType, root(milestones.SaveType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("GET "+paths.Milestones, root(milestoneshttp.ShowSection(deps.MilestoneSvc)))
+	mux.Handle("POST "+paths.MilestoneTypes, root(milestoneshttp.CreateType(deps.MilestoneSvc)))
+	mux.Handle("GET "+paths.MilestoneTypeNew, root(milestoneshttp.ShowNewType()))
+	mux.Handle("GET "+paths.MilestoneType, root(milestoneshttp.ShowType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneType, root(milestoneshttp.SaveType(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+
+	mux.Handle("POST "+paths.MilestoneTemplates, root(milestoneshttp.CreateTemplate(deps.MilestoneSvc)))
+	mux.Handle("GET "+paths.MilestoneTemplateNew, root(milestoneshttp.ShowNewTemplate()))
+	mux.Handle("GET "+paths.MilestoneTemplate, root(milestoneshttp.ShowTemplate(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneTemplate, root(milestoneshttp.SaveTemplate(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneItems, root(milestoneshttp.AddItem(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneItemsOrder, root(milestoneshttp.ReorderItems(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneItem, root(milestoneshttp.SaveItem(deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog)))
+	mux.Handle("POST "+paths.MilestoneItemRemove, root(milestoneshttp.RemoveItem(deps.MilestoneSvc)))
 
 	// The order of middleware chain:
 	//   - request id first, so that every line the logger writes is tagged with it;

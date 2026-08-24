@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/paveltessman/pilam/internal/milestone"
+	"github.com/paveltessman/pilam/internal/milestones"
 )
 
 func TestMilestoneTypesRoundTripEveryField(t *testing.T) {
@@ -25,13 +25,13 @@ func TestMilestoneTypesRoundTripEveryField(t *testing.T) {
 func TestMilestoneTypesReportMissingRowAsErrNoType(t *testing.T) {
 	store := milestoneDB(t)
 
-	if _, err := store.types.ByID(t.Context(), gen.New()); !errors.Is(err, milestone.ErrNoType) {
-		t.Errorf("ByID error = %v, want %v", err, milestone.ErrNoType)
+	if _, err := store.types.ByID(t.Context(), gen.New()); !errors.Is(err, milestones.ErrNoType) {
+		t.Errorf("ByID error = %v, want %v", err, milestones.ErrNoType)
 	}
 
-	missing := milestone.Type{ID: gen.New(), Name: "fit", Description: "Fitting", Active: true}
-	if err := store.types.Update(t.Context(), missing); !errors.Is(err, milestone.ErrNoType) {
-		t.Errorf("Update error = %v, want %v", err, milestone.ErrNoType)
+	missing := milestones.Type{ID: gen.New(), Name: "fit", Description: "Fitting", Active: true}
+	if err := store.types.Update(t.Context(), missing); !errors.Is(err, milestones.ErrNoType) {
+		t.Errorf("Update error = %v, want %v", err, milestones.ErrNoType)
 	}
 }
 
@@ -40,16 +40,16 @@ func TestMilestoneTypesRefusesTakenName(t *testing.T) {
 	held := store.milestoneType(t, "fit", "Fitting")
 
 	for _, name := range []string{"fit", "FIT"} {
-		taken := milestone.Type{ID: gen.New(), Name: name, Description: "Second fitting", Active: true}
-		if err := store.types.Create(t.Context(), taken); !errors.Is(err, milestone.ErrNameTaken) {
-			t.Errorf("Create %q error = %v, want %v", name, err, milestone.ErrNameTaken)
+		taken := milestones.Type{ID: gen.New(), Name: name, Description: "Second fitting", Active: true}
+		if err := store.types.Create(t.Context(), taken); !errors.Is(err, milestones.ErrNameTaken) {
+			t.Errorf("Create %q error = %v, want %v", name, err, milestones.ErrNameTaken)
 		}
 	}
 
 	other := store.milestoneType(t, "shoot", "Photo shoot")
 	other.Name = "FIT"
-	if err := store.types.Update(t.Context(), other); !errors.Is(err, milestone.ErrNameTaken) {
-		t.Errorf("Update error = %v, want %v", err, milestone.ErrNameTaken)
+	if err := store.types.Update(t.Context(), other); !errors.Is(err, milestones.ErrNameTaken) {
+		t.Errorf("Update error = %v, want %v", err, milestones.ErrNameTaken)
 	}
 
 	// The row keeps its own name: an update of one row is not a duplicate.
@@ -62,9 +62,9 @@ func TestMilestoneTypesRefusesTakenID(t *testing.T) {
 	store := milestoneDB(t)
 	held := store.milestoneType(t, "fit", "Fitting")
 
-	taken := milestone.Type{ID: held.ID, Name: "shoot", Description: "Photo shoot", Active: true}
-	if err := store.types.Create(t.Context(), taken); !errors.Is(err, milestone.ErrIDTaken) {
-		t.Errorf("Create error = %v, want %v", err, milestone.ErrIDTaken)
+	taken := milestones.Type{ID: held.ID, Name: "shoot", Description: "Photo shoot", Active: true}
+	if err := store.types.Create(t.Context(), taken); !errors.Is(err, milestones.ErrIDTaken) {
+		t.Errorf("Create error = %v, want %v", err, milestones.ErrIDTaken)
 	}
 }
 
