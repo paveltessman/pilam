@@ -184,16 +184,16 @@ func (r *Trail) Record(_ context.Context, entries ...audit.Entry) error {
 	return nil
 }
 
-// ByEntity is the read side: the entries of one entity, newest first, at most
-// limit of them. The clock is fixed, so entries stamped alike come back in the
-// reverse of the order they were Trail in.
-func (r *Trail) ByEntity(_ context.Context, entity string, entityID ids.ID, limit int) ([]audit.Entry, error) {
+// ByEntities is the read side: the entries of the rows named, newest first, at
+// most limit of them. The clock is fixed, so entries stamped alike come back in
+// the reverse of the order they were recorded in.
+func (r *Trail) ByEntities(_ context.Context, entity string, entityIDs []ids.ID, limit int) ([]audit.Entry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	var held []audit.Entry
 	for _, entry := range r.entries {
-		if entry.Entity == entity && entry.EntityID == entityID {
+		if entry.Entity == entity && slices.Contains(entityIDs, entry.EntityID) {
 			held = append(held, entry)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -11,18 +12,26 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/ids"
 )
 
-// fakeReader hands back the entries the test put in it, and keeps the limit it
-// was asked for.
+// fakeReader hands back the entries it holds for an entity, and keeps the limit
+// it was asked for.
 type fakeReader struct {
+	// entries is what one call returns. byEntity answers per entity where the
+	// test states more than one of them.
 	entries  []Entry
+	byEntity map[string][]Entry
 	limit    int
+	reads    int
 	failWith error
 }
 
-func (f *fakeReader) ByEntity(_ context.Context, _ string, _ ids.ID, limit int) ([]Entry, error) {
+func (f *fakeReader) ByEntities(_ context.Context, entity string, _ []ids.ID, limit int) ([]Entry, error) {
 	f.limit = limit
+	f.reads++
 	if f.failWith != nil {
 		return nil, f.failWith
+	}
+	if f.byEntity != nil {
+		return slices.Clone(f.byEntity[entity]), nil
 	}
 	return slices.Clone(f.entries), nil
 }
@@ -92,6 +101,85 @@ func TestLogReportsAReadFailure(t *testing.T) {
 
 	if _, err := log.Entity(t.Context(), EntityUser, targetID, 0); !errors.Is(err, failure) {
 		t.Errorf("Entity: %v, want the failure of the store", err)
+	}
+}
+
+// stampedAt is one entry of an entity, stamped at the minute given.
+func stampedAt(entity string, minute int) Entry {
+	return Entry{
+		ID:       ids.MustParse("01912345-6789-7abc-def0-1234567890" + strconv.Itoa(10+minute)),
+		At:       now.Add(time.Duration(minute) * time.Minute),
+		Entity:   entity,
+		EntityID: targetID,
+	}
+}
+
+func TestScopesMergeTheHistoriesNewestFirst(t *testing.T) {
+	reader := &fakeReader{byEntity: map[string][]Entry{
+		EntityModel: {stampedAt(EntityModel, 4), stampedAt(EntityModel, 1)},
+		EntityMilestone: {
+			stampedAt(EntityMilestone, 5),
+			stampedAt(EntityMilestone, 3),
+			stampedAt(EntityMilestone, 2),
+		},
+	}}
+	log := newTestLog(reader, time.UTC)
+
+	entries, err := log.Scopes(t.Context(), 0,
+		Scope{Entity: EntityModel, IDs: []ids.ID{targetID}},
+		Scope{Entity: EntityMilestone, IDs: []ids.ID{targetID, actorID}},
+	)
+	if err != nil {
+		t.Fatalf("Scopes: %v", err)
+	}
+
+	want := []string{
+		EntityMilestone, EntityModel, EntityMilestone, EntityMilestone, EntityModel,
+	}
+	got := make([]string, len(entries))
+	for i, entry := range entries {
+		got[i] = entry.Entity
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the merged trail = %v, want %v", got, want)
+	}
+}
+
+func TestScopesCutTheMergeToTheLimit(t *testing.T) {
+	reader := &fakeReader{byEntity: map[string][]Entry{
+		EntityModel:     {stampedAt(EntityModel, 4), stampedAt(EntityModel, 1)},
+		EntityMilestone: {stampedAt(EntityMilestone, 5), stampedAt(EntityMilestone, 3)},
+	}}
+	log := newTestLog(reader, time.UTC)
+
+	entries, err := log.Scopes(t.Context(), 3,
+		Scope{Entity: EntityModel, IDs: []ids.ID{targetID}},
+		Scope{Entity: EntityMilestone, IDs: []ids.ID{targetID}},
+	)
+	if err != nil {
+		t.Fatalf("Scopes: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("the merged trail holds %d entries, want 3", len(entries))
+	}
+	if got := entries[0].Entity; got != EntityMilestone {
+		t.Errorf("the newest entry is a %s, want a %s", got, EntityMilestone)
+	}
+}
+
+func TestScopesReadPastAScopeThatNamesNoRow(t *testing.T) {
+	reader := &fakeReader{}
+	log := newTestLog(reader, time.UTC)
+
+	entries, err := log.Scopes(t.Context(), 0, Scope{Entity: EntityMilestone})
+	if err != nil {
+		t.Fatalf("Scopes: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("the trail holds %+v, want nothing", entries)
+	}
+	if reader.reads != 0 {
+		t.Errorf("the store was read %d times, want none", reader.reads)
 	}
 }
 

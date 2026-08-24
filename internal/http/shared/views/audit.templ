@@ -16,6 +16,11 @@ import (
 type AuditEvent struct {
 	Entry audit.Entry
 	Actor auth.Account
+
+	// Subject names the row the entry belongs to, where a card carries the
+	// history of the rows under it. The model screen names the step a milestone
+	// entry moved. It is empty for an entry about the card itself.
+	Subject string
 }
 
 // When is the moment of the change. The log stamps it in the business timezone.
@@ -30,18 +35,27 @@ func (e AuditEvent) Who() string {
 }
 
 // What reads the change: the action, and the two values it moved between where
-// those add anything to the action.
+// those add anything to the action. An entry about a row under the card is read
+// under the name of that row.
 func (e AuditEvent) What() string {
 	action := auditAction(e.Entry)
 	old, next := auditValue(e.Entry.FieldKey, e.Entry.Old), auditValue(e.Entry.FieldKey, e.Entry.New)
 
+	what := action
 	switch {
 	case old != "" && next != "":
-		return action + ": " + old + " → " + next
+		what = action + ": " + old + " → " + next
 	case next != "":
-		return action + ": " + next
+		what = action + ": " + next
+	case old != "":
+		// A value that went and left nothing behind: a fact date cleared, a
+		// step taken out of a template.
+		what = action + ": " + old
 	}
-	return action
+	if e.Subject != "" {
+		return e.Subject + " — " + what
+	}
+	return what
 }
 
 // AuditTrail is the history of one record, newest first. Every card renders the
@@ -95,6 +109,8 @@ func auditAction(entry audit.Entry) string {
 		return milestoneTypeAction(entry)
 	case audit.EntityMilestoneTemplate:
 		return milestoneTemplateAction(entry)
+	case audit.EntityMilestone:
+		return milestoneAction(entry)
 	default:
 		panic(fmt.Sprintf("Unknown audit entity: %s", entry.Entity))
 	}
@@ -159,6 +175,8 @@ func modelAction(entry audit.Entry) string {
 		return labels.ModelsAuditPhotoRemoved
 	case audit.ActionPhotoReordered:
 		return labels.ModelsAuditPhotoReorder
+	case audit.ActionTemplateApplied:
+		return labels.ModelsAuditTemplate
 	case audit.ActionChanged:
 		if entry.FieldKey == catalog.FieldArticle {
 			return labels.ModelsAuditArticle
@@ -224,6 +242,34 @@ func milestoneTemplateAction(entry audit.Entry) string {
 	return labels.AuditOther
 }
 
+// milestoneAction names a change of one milestone of a model. Applying a whole
+// calendar is a change of the model, and it is read there.
+func milestoneAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionCreated:
+		return labels.MilestonesAuditCreated
+	case audit.ActionFactStamped:
+		return labels.MilestonesAuditFact
+	case audit.ActionFactCleared:
+		return labels.MilestonesAuditFactCleared
+	case audit.ActionDeactivated:
+		return labels.AuditOff
+	case audit.ActionReactivated:
+		return labels.AuditOn
+	case audit.ActionChanged:
+		switch entry.FieldKey {
+		case milestones.FieldPlanDate:
+			return labels.MilestonesAuditPlan
+		case milestones.FieldFactDate:
+			return labels.MilestonesAuditFactMoved
+		case milestones.FieldNote:
+			return labels.MilestonesAuditNote
+		}
+	}
+	// An action recorded and not named here.
+	return labels.AuditOther
+}
+
 // catalogAction names what the three catalog cards share: the name, and the
 // `active` flag.
 func catalogAction(entry audit.Entry) string {
@@ -252,10 +298,27 @@ func auditValue(field, value string) string {
 		return ""
 	case field == catalog.FieldStartDate || field == catalog.FieldTargetDate:
 		return auditDate(value)
+	case field == milestones.FieldPlanDate || field == milestones.FieldFactDate:
+		return auditDate(value)
+	case field == milestones.FieldNote:
+		return clipped(value)
 	case field == auth.FieldRole:
 		return RoleLabel(auth.Role(value))
 	}
 	return value
+}
+
+// noteInTrail is how much of a note the history shows. The whole note is on the
+// row itself, and the trail says that it moved.
+const noteInTrail = 60
+
+// clipped shortens a value that is too long for one line of the table.
+func clipped(value string) string {
+	runes := []rune(value)
+	if len(runes) <= noteInTrail {
+		return value
+	}
+	return string(runes[:noteInTrail]) + "…"
 }
 
 // auditDate reads a date the trail holds in the wire form and renders it the

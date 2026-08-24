@@ -211,6 +211,7 @@ const (
 	ModelsAuditPhotoAdded   = "Фото добавлено"
 	ModelsAuditPhotoRemoved = "Фото удалено"
 	ModelsAuditPhotoReorder = "Порядок фотографий изменён"
+	ModelsAuditTemplate     = "Критический путь применён"
 )
 
 // The milestone types section
@@ -269,6 +270,16 @@ const (
 	MilestoneTemplatesAuditAdded      = "Этап добавлен"
 	MilestoneTemplatesAuditRemoved    = "Этап удалён"
 	MilestoneTemplatesAuditReorder    = "Порядок этапов изменён"
+)
+
+// The calendar of one model: what the trail of a milestone reads as.
+const (
+	MilestonesAuditCreated     = "Этап добавлен"
+	MilestonesAuditPlan        = "План перенесён"
+	MilestonesAuditFact        = "Факт проставлен"
+	MilestonesAuditFactMoved   = "Факт изменён"
+	MilestonesAuditFactCleared = "Факт снят"
+	MilestonesAuditNote        = "Комментарий изменён"
 )
 
 // The failures in the http middleware chain

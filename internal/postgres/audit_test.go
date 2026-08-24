@@ -240,7 +240,7 @@ func TestNewAuditRefusesNilDatabase(t *testing.T) {
 	NewAudit(nil)
 }
 
-func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
+func TestAuditByEntitiesReturnsTheNewestFirst(t *testing.T) {
 	t.Parallel()
 
 	recorder, users, actor := auditDB(t)
@@ -264,12 +264,12 @@ func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
 		t.Fatalf("Record: %v", err)
 	}
 
-	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)
+	held, err := recorder.ByEntities(t.Context(), audit.EntityUser, []ids.ID{actor.ID}, 10)
 	if err != nil {
-		t.Fatalf("ByEntity: %v", err)
+		t.Fatalf("ByEntities: %v", err)
 	}
 	if len(held) != len(written) {
-		t.Fatalf("ByEntity returns %d entries, want %d", len(held), len(written))
+		t.Fatalf("ByEntities returns %d entries, want %d", len(held), len(written))
 	}
 
 	// Newest first, and the entry about the other user stays out.
@@ -282,7 +282,7 @@ func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
 	}
 }
 
-func TestAuditByEntityHoldsToTheLimit(t *testing.T) {
+func TestAuditByEntitiesHoldsToTheLimit(t *testing.T) {
 	t.Parallel()
 
 	recorder, _, actor := auditDB(t)
@@ -293,12 +293,12 @@ func TestAuditByEntityHoldsToTheLimit(t *testing.T) {
 		t.Fatalf("Record: %v", err)
 	}
 
-	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 1)
+	held, err := recorder.ByEntities(t.Context(), audit.EntityUser, []ids.ID{actor.ID}, 1)
 	if err != nil {
-		t.Fatalf("ByEntity: %v", err)
+		t.Fatalf("ByEntities: %v", err)
 	}
 	if len(held) != 1 {
-		t.Fatalf("ByEntity returns %d entries, want 1", len(held))
+		t.Fatalf("ByEntities returns %d entries, want 1", len(held))
 	}
 	if got := held[0].At.UTC(); !got.Equal(newest.At) {
 		t.Errorf("the entry kept is stamped %s, want the newest, %s", got, newest.At)
@@ -307,7 +307,7 @@ func TestAuditByEntityHoldsToTheLimit(t *testing.T) {
 
 // A NULL value column reads back as the empty string, which is the form the
 // domain states a missing side in.
-func TestAuditByEntityReadsAbsentValueAsEmpty(t *testing.T) {
+func TestAuditByEntitiesReadsAbsentValueAsEmpty(t *testing.T) {
 	t.Parallel()
 
 	recorder, _, actor := auditDB(t)
@@ -322,28 +322,76 @@ func TestAuditByEntityReadsAbsentValueAsEmpty(t *testing.T) {
 		t.Fatalf("Record: %v", err)
 	}
 
-	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)
+	held, err := recorder.ByEntities(t.Context(), audit.EntityUser, []ids.ID{actor.ID}, 10)
 	if err != nil {
-		t.Fatalf("ByEntity: %v", err)
+		t.Fatalf("ByEntities: %v", err)
 	}
 	if len(held) != 1 {
-		t.Fatalf("ByEntity returns %d entries, want 1", len(held))
+		t.Fatalf("ByEntities returns %d entries, want 1", len(held))
 	}
 	if held[0].Old != "" || held[0].New != "" {
 		t.Errorf("the entry reads Old %q and New %q, want both empty", held[0].Old, held[0].New)
 	}
 }
 
-func TestAuditByEntityReadsNothingForAnEntityWithNoEntries(t *testing.T) {
+func TestAuditByEntitiesReadsNothingForAnEntityWithNoEntries(t *testing.T) {
 	t.Parallel()
 
 	recorder, _, actor := auditDB(t)
 
-	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)
+	held, err := recorder.ByEntities(t.Context(), audit.EntityUser, []ids.ID{actor.ID}, 10)
 	if err != nil {
-		t.Fatalf("ByEntity: %v", err)
+		t.Fatalf("ByEntities: %v", err)
 	}
 	if len(held) != 0 {
-		t.Errorf("ByEntity returns %d entries, want none", len(held))
+		t.Errorf("ByEntities returns %d entries, want none", len(held))
+	}
+}
+
+func TestAuditByEntitiesReadsSeveralRowsOfOneEntityAtOnce(t *testing.T) {
+	t.Parallel()
+
+	recorder, users, actor := auditDB(t)
+	other := create(t, users, sample("grace@example.com", "Ada"))
+	third := create(t, users, sample("linus@example.com", "Ada"))
+
+	written := make([]audit.Entry, 0, 3)
+	for i, target := range []ids.ID{actor.ID, other.ID, third.ID} {
+		held := sampleEntry(actor.ID, target)
+		held.At = time.Date(2026, 8, 16+i, 9, 0, 0, 0, time.UTC)
+		written = append(written, held)
+	}
+	if err := recorder.Record(t.Context(), written...); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	held, err := recorder.ByEntities(t.Context(), audit.EntityUser, []ids.ID{actor.ID, third.ID}, 10)
+	if err != nil {
+		t.Fatalf("ByEntities: %v", err)
+	}
+
+	if len(held) != 2 {
+		t.Fatalf("ByEntities returns %d entries, want 2: %+v", len(held), held)
+	}
+	if held[0].EntityID != third.ID || held[1].EntityID != actor.ID {
+		t.Errorf("ByEntities names %s then %s, want %s then %s",
+			held[0].EntityID, held[1].EntityID, third.ID, actor.ID)
+	}
+}
+
+func TestAuditByEntitiesReadsNothingForNoRowAtAll(t *testing.T) {
+	t.Parallel()
+
+	recorder, _, actor := auditDB(t)
+	if err := recorder.Record(t.Context(), sampleEntry(actor.ID, actor.ID)); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	held, err := recorder.ByEntities(t.Context(), audit.EntityUser, nil, 10)
+	if err != nil {
+		t.Fatalf("ByEntities: %v", err)
+	}
+	if len(held) != 0 {
+		t.Errorf("ByEntities returns %d entries, want none", len(held))
 	}
 }

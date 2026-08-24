@@ -34,7 +34,7 @@ func EntriesOf(t *testing.T, trail *Trail, entity, id string) []audit.Entry {
 	if err != nil {
 		t.Fatalf("reading the trail of %s %q: %v", entity, id, err)
 	}
-	entries, err := trail.ByEntity(t.Context(), entity, entityID, audit.DefaultLimit)
+	entries, err := trail.ByEntities(t.Context(), entity, []ids.ID{entityID}, audit.DefaultLimit)
 	if err != nil {
 		t.Fatalf("reading the trail of %s %s: %v", entity, id, err)
 	}
