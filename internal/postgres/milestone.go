@@ -22,6 +22,9 @@ const (
 	milestoneItemTypeIndex  = "milestone_template_item_type_key"
 	milestoneItemOrderIndex = "milestone_template_item_order_key"
 	milestoneItemIDIndex    = "milestone_template_item_pkey"
+
+	milestoneTypeOnModelIndex = "milestone_model_type_key"
+	milestoneIDIndex          = "milestone_pkey"
 )
 
 // duplicateError translates the duplicate constraint to domain errors.
@@ -36,7 +39,9 @@ func duplicateError(err error) error {
 		return fmt.Errorf("%w: %w", milestones.ErrNameTaken, err)
 	case milestoneItemTypeIndex:
 		return fmt.Errorf("%w: %w", milestones.ErrTypeInTemplate, err)
-	case milestoneTypeIDIndex, milestoneTemplateIDIndex, milestoneItemIDIndex:
+	case milestoneTypeOnModelIndex:
+		return fmt.Errorf("%w: %w", milestones.ErrTypeOnModel, err)
+	case milestoneTypeIDIndex, milestoneTemplateIDIndex, milestoneItemIDIndex, milestoneIDIndex:
 		return fmt.Errorf("%w: %w", milestones.ErrIDTaken, err)
 	case milestoneTemplateDefaultIndex, milestoneItemOrderIndex:
 		// The service holds both: it clears the default before it names a new

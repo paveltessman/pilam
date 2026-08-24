@@ -5,21 +5,67 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/milestones"
+	"github.com/paveltessman/pilam/internal/platform/date"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 )
 
-// milestoneRepos is the port of the milestone package over one database.
+// milestoneRepos is the port of the milestone package over one database. It
+// carries the catalog stores as well, because a calendar needs the model and
+// the drop that hold it.
 type milestoneRepos struct {
-	db        *DB
-	types     *MilestoneTypes
-	templates *MilestoneTemplates
+	db         *DB
+	types      *MilestoneTypes
+	templates  *MilestoneTemplates
+	milestones *Milestones
+	catalog    repos
 }
 
 func milestoneDB(t *testing.T) milestoneRepos {
 	t.Helper()
 	db := openTestDB(t)
-	return milestoneRepos{db: db, types: NewMilestoneTypes(db), templates: NewMilestoneTemplates(db)}
+	return milestoneRepos{
+		db:         db,
+		types:      NewMilestoneTypes(db),
+		templates:  NewMilestoneTemplates(db),
+		milestones: NewMilestones(db),
+		catalog: repos{
+			db:      db,
+			seasons: NewSeasons(db),
+			drops:   NewDrops(db),
+			models:  NewModels(db),
+			photos:  NewPhotos(db),
+		},
+	}
+}
+
+// model writes the whole spine above a calendar and returns the model at the
+// end of it. target is the target date of the drop.
+func (r milestoneRepos) model(t *testing.T, article, target string) catalog.Model {
+	t.Helper()
+
+	season := r.catalog.season(t, "SS26 "+article, "2026-01-05")
+	drop := r.catalog.drop(t, season, "Drop 1", target)
+	return r.catalog.model(t, drop, article)
+}
+
+// milestone writes one milestone of a model and returns it.
+func (r milestoneRepos) milestone(t *testing.T, model catalog.Model, typeID ids.ID, plan string) milestones.Milestone {
+	t.Helper()
+
+	created := milestones.Milestone{
+		ID:       gen.New(),
+		ModelID:  model.ID,
+		TypeID:   typeID,
+		Baseline: date.MustParse(plan),
+		Plan:     date.MustParse(plan),
+		Active:   true,
+	}
+	if err := r.milestones.Create(t.Context(), created); err != nil {
+		t.Fatalf("Milestones.Create: %v", err)
+	}
+	return created
 }
 
 // milestoneType writes one type and returns it.
