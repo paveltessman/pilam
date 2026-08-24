@@ -42,14 +42,16 @@ func NewDeps(t *testing.T) Deps {
 // adds the service and the log, which share one trail.
 func BaseDeps(t *testing.T) Deps {
 	t.Helper()
+
+	rows := newCatalogStore()
 	d := Deps{
 		DB:           stubPinger{},
 		Logger:       logging.New(logging.Options{Format: logging.FormatText, Output: io.Discard}),
 		IDs:          ids.NewGenerator(),
 		Media:        MediaStore(t),
 		SessionMgr:   session.New([]byte("test signing key"), time.Hour, clock.New(time.UTC)),
-		CatalogSvc:   CatalogServiceOn(t, &Trail{}),
-		MilestoneSvc: MilestoneServiceOn(t, &Trail{}),
+		CatalogSvc:   catalogServiceOn(t, &Trail{}, rows),
+		MilestoneSvc: milestoneServiceOn(t, &Trail{}, rows),
 	}
 	return d
 }
@@ -60,10 +62,11 @@ func AuditedDeps(t *testing.T) (Deps, *Trail) {
 	t.Helper()
 
 	trail := &Trail{}
+	rows := newCatalogStore()
 	d := BaseDeps(t)
 	d.AuthSvc = AuthServiceOn(t, trail)
-	d.CatalogSvc = CatalogServiceOn(t, trail)
-	d.MilestoneSvc = MilestoneServiceOn(t, trail)
+	d.CatalogSvc = catalogServiceOn(t, trail, rows)
+	d.MilestoneSvc = milestoneServiceOn(t, trail, rows)
 	d.AuditLog = audit.NewLog(trail, Clock())
 	return d, trail
 }

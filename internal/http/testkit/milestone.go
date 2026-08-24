@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/milestones"
@@ -223,16 +224,102 @@ func (s *milestoneTemplateStore) ReorderItems(_ context.Context, ordered []ids.I
 	return nil
 }
 
-// MilestoneServiceOn returns the service the test router is wired with,
-// recording to the trail the test reads back.
-func MilestoneServiceOn(t *testing.T, trail *Trail) *milestones.Service {
+// milestoneCalendarStore is the in-memory stand-in for the calendar port. It
+// holds the one rule the screens depend on: a model holds one milestone per
+// type.
+//
+// It reads the catalog rows the test wrote, because the target date every
+// calendar is reckoned from belongs to the drop of the model.
+type milestoneCalendarStore struct {
+	mu      sync.Mutex
+	rows    map[ids.ID]milestones.Milestone
+	catalog *catalogStore
+}
+
+func newMilestoneCalendarStore(rows *catalogStore) *milestoneCalendarStore {
+	return &milestoneCalendarStore{rows: make(map[ids.ID]milestones.Milestone), catalog: rows}
+}
+
+func (s *milestoneCalendarStore) ByID(_ context.Context, id ids.ID) (milestones.Milestone, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	milestone, found := s.rows[id]
+	if !found {
+		return milestones.Milestone{}, milestones.ErrNoMilestone
+	}
+	return milestone, nil
+}
+
+func (s *milestoneCalendarStore) ByModel(_ context.Context, modelID ids.ID) ([]milestones.Milestone, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var calendar []milestones.Milestone
+	for _, held := range s.rows {
+		if held.ModelID == modelID {
+			calendar = append(calendar, held)
+		}
+	}
+	slices.SortFunc(calendar, func(a, b milestones.Milestone) int {
+		if !a.Plan.Equal(b.Plan) {
+			return a.Plan.Compare(b.Plan)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
+	return calendar, nil
+}
+
+func (s *milestoneCalendarStore) Create(_ context.Context, in ...milestones.Milestone) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, one := range in {
+		for _, held := range s.rows {
+			if held.ModelID == one.ModelID && held.TypeID == one.TypeID {
+				return milestones.ErrTypeOnModel
+			}
+		}
+		s.rows[one.ID] = one
+	}
+	return nil
+}
+
+func (s *milestoneCalendarStore) Update(_ context.Context, in milestones.Milestone) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, found := s.rows[in.ID]; !found {
+		return milestones.ErrNoMilestone
+	}
+	s.rows[in.ID] = in
+	return nil
+}
+
+func (s *milestoneCalendarStore) Target(ctx context.Context, modelID ids.ID) (time.Time, error) {
+	model, err := s.catalog.modelByID(ctx, modelID)
+	if err != nil {
+		return time.Time{}, milestones.ErrNoModel
+	}
+	drop, err := s.catalog.dropByID(ctx, model.DropID)
+	if err != nil {
+		return time.Time{}, milestones.ErrNoModel
+	}
+	return drop.TargetDate, nil
+}
+
+// milestoneServiceOn returns the service the test router is wired with,
+// recording to the trail the test reads back. It reads the catalog rows given,
+// which is the same store the catalog service writes.
+func milestoneServiceOn(t *testing.T, trail *Trail, rows *catalogStore) *milestones.Service {
 	t.Helper()
 
 	gen := ids.NewGenerator()
 	store := milestones.Store{
-		Types:     newMilestoneTypeStore(),
-		Templates: newMilestoneTemplateStore(),
-		Atomic:    directAtomic{},
+		Types:      newMilestoneTypeStore(),
+		Templates:  newMilestoneTemplateStore(),
+		Milestones: newMilestoneCalendarStore(rows),
+		Atomic:     directAtomic{},
 	}
-	return milestones.NewService(store, gen, audit.NewTrail(trail, Clock(), gen))
+	return milestones.NewService(store, gen, Clock(), audit.NewTrail(trail, Clock(), gen))
 }

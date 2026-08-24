@@ -7,6 +7,7 @@ import (
 	"errors"
 
 	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 	"github.com/paveltessman/pilam/internal/shared"
@@ -67,35 +68,44 @@ type Atomic interface {
 
 type Service struct {
 	shared.BaseService
-	types     TypesStore
-	templates TemplatesStore
-	atomic    Atomic
-	ids       ids.Generator
+	types      TypesStore
+	templates  TemplatesStore
+	milestones MilestonesStore
+	atomic     Atomic
+	ids        ids.Generator
+	clock      clock.Clock
 }
 
 type Store struct {
-	Types     TypesStore
-	Templates TemplatesStore
-	Atomic    Atomic
+	Types      TypesStore
+	Templates  TemplatesStore
+	Milestones MilestonesStore
+	Atomic     Atomic
 }
 
-func NewService(store Store, gen ids.Generator, trail *audit.Trail) *Service {
+func NewService(store Store, gen ids.Generator, clk clock.Clock, trail *audit.Trail) *Service {
 	switch {
 	case store.Types == nil:
 		panic("milestone: nil types store")
 	case store.Templates == nil:
 		panic("milestone: nil templates store")
+	case store.Milestones == nil:
+		panic("milestone: nil milestones store")
 	case store.Atomic == nil:
 		panic("milestone: nil transaction runner")
 	case gen == nil:
 		panic("milestone: nil id generator")
+	case clk == nil:
+		panic("milestone: nil clock")
 	}
 	service := &Service{
 		BaseService: shared.NewBaseService(trail),
 		types:       store.Types,
 		templates:   store.Templates,
+		milestones:  store.Milestones,
 		atomic:      store.Atomic,
 		ids:         gen,
+		clock:       clk,
 	}
 	return service
 }
