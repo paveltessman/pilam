@@ -99,10 +99,10 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+paths.Models, guard(models.ShowList(deps.CatalogSvc, deps.Media)))
 	mux.Handle("POST "+paths.Models, guard(models.Create(deps.CatalogSvc)))
 	mux.Handle("GET "+paths.ModelNew, guard(models.ShowNew(deps.CatalogSvc)))
-	mux.Handle("GET "+paths.Model, guard(models.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+paths.Model, guard(models.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+paths.ModelPhotos, guard(models.AddPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+paths.ModelOrder, guard(models.ReorderPhotos(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("GET "+paths.Model, guard(models.Show(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.Model, guard(models.Save(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.ModelPhotos, guard(models.AddPhotos(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("POST "+paths.ModelOrder, guard(models.ReorderPhotos(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
 	mux.Handle("POST "+paths.ModelPhoto, guard(models.RemovePhoto(deps.CatalogSvc)))
 
 	// S5, the users section. Root only: a member gets a 403 on every route of

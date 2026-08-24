@@ -21,9 +21,13 @@ type ModelCard struct {
 	Season  catalog.Season
 	Drop    catalog.Drop
 	Photos  []ModelPhoto
-	Alert   string
-	Notice  string
-	Errors  validate.FieldErrors
+
+	// Calendar is the milestone section: one row per step of the model.
+	Calendar ModelCalendar
+
+	Alert  string
+	Notice string
+	Errors validate.FieldErrors
 
 	// Trail is what the audit log holds about this model, newest first.
 	Trail []shared.AuditEvent
@@ -116,6 +120,7 @@ templ Model(card ModelCard) {
 				}
 			</form>
 			@modelPhotos(card)
+			@modelCalendar(card.Calendar)
 			<div class="mt-6">
 				@button.Button(button.Props{Href: paths.Models, Variant: button.VariantGhost, Size: button.SizeSm}) {
 					{ labels.ActionBackToList }

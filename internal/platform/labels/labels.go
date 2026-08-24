@@ -272,6 +272,29 @@ const (
 	MilestoneTemplatesAuditReorder    = "Порядок этапов изменён"
 )
 
+// The calendar section of the model screen.
+const (
+	MilestonesTitle = "Критический путь"
+	MilestonesHint  = "Этапы модели в порядке плановых дат."
+	MilestonesEmpty = "У модели пока нет критического пути."
+
+	MilestonesStep     = "Этап"
+	MilestonesBaseline = "База"
+	MilestonesPlan     = "План"
+	MilestonesFact     = "Факт"
+	MilestonesState    = "Статус"
+	MilestonesSlip     = "Отклонение"
+
+	MilestonesStateDone    = "Готово"
+	MilestonesStateLate    = "Просрочен"
+	MilestonesStateDue     = "Скоро"
+	MilestonesStatePlanned = "В плане"
+
+	MilestonesOnTime  = "В срок"
+	MilestonesNote    = "Комментарий"
+	MilestonesRetired = "Снятые этапы"
+)
+
 // The calendar of one model: what the trail of a milestone reads as.
 const (
 	MilestonesAuditCreated     = "Этап добавлен"

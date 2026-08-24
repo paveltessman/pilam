@@ -1,0 +1,194 @@
+package views
+
+import (
+	shared "github.com/paveltessman/pilam/internal/http/shared/views"
+	"github.com/paveltessman/pilam/internal/milestones"
+	"github.com/paveltessman/pilam/internal/platform/ids"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
+
+// ModelCalendar is the calendar section of the model screen: one row per
+// milestone of the model, in plan date order.
+//
+// A retired milestone leaves the calendar and stays in the history, so it sits
+// under the table rather than in it.
+type ModelCalendar struct {
+	Rows    []CalendarRow
+	Retired []CalendarRow
+}
+
+// Held reports whether the model holds a calendar at all.
+func (c ModelCalendar) Held() bool { return len(c.Rows) > 0 || len(c.Retired) > 0 }
+
+// CalendarRow is one milestone as the section shows it. Every value is already
+// rendered: the row states what the user reads.
+type CalendarRow struct {
+	MilestoneID string
+	Type        string
+	Baseline    string
+	Plan        string
+	Fact        string
+	Note        string
+
+	// State is the word the row reads as today, and Late marks the row the
+	// section calls out.
+	State string
+	Late  bool
+
+	// Slip is the days the plan moved from the baseline, and OnTime marks a
+	// done step that landed no later than the baseline. Slip is empty while the
+	// plan stands on the baseline.
+	Slip   string
+	OnTime bool
+}
+
+// NewModelCalendar builds the section. names holds the short name of every
+// milestone type.
+func NewModelCalendar(calendar []milestones.CalendarRow, names map[ids.ID]string) ModelCalendar {
+	var section ModelCalendar
+	for _, row := range calendar {
+		rendered := newCalendarRow(row, names[row.TypeID])
+		if row.Active {
+			section.Rows = append(section.Rows, rendered)
+			continue
+		}
+		section.Retired = append(section.Retired, rendered)
+	}
+	return section
+}
+
+func newCalendarRow(row milestones.CalendarRow, name string) CalendarRow {
+	rendered := CalendarRow{
+		MilestoneID: row.ID.String(),
+		Type:        name,
+		Plan:        labels.Date(row.Plan),
+		Fact:        labels.Date(row.Fact),
+		Note:        row.Note,
+		State:       calendarState(row.State),
+		Late:        row.State == milestones.StateLate,
+		OnTime:      row.OnTime(),
+	}
+	if slip := row.Slip(); slip != 0 {
+		rendered.Baseline = labels.Date(row.Baseline)
+		rendered.Slip = labels.Delta(slip)
+	}
+	return rendered
+}
+
+// calendarState is the word one state reads as.
+func calendarState(state milestones.State) string {
+	switch state {
+	case milestones.StateDone:
+		return labels.MilestonesStateDone
+	case milestones.StateLate:
+		return labels.MilestonesStateLate
+	case milestones.StateDue:
+		return labels.MilestonesStateDue
+	case milestones.StatePlanned:
+		return labels.MilestonesStatePlanned
+	}
+	// A state computed and not named here.
+	return labels.Empty
+}
+
+// modelCalendar is the section under the photo strip: the steps of the model,
+// with the three dates and the state of each one.
+templ modelCalendar(calendar ModelCalendar) {
+	<section class="mt-10">
+		<h2 class="mb-1 text-lg font-semibold tracking-tight">{ labels.MilestonesTitle }</h2>
+		<p class="mb-4 text-sm text-muted-foreground">{ labels.MilestonesHint }</p>
+		if len(calendar.Rows) == 0 {
+			@shared.EmptyPanel(labels.MilestonesEmpty)
+		} else {
+			<div class="overflow-x-auto rounded-lg border">
+				<table class="w-full text-sm">
+					<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+						<tr>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesStep }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesBaseline }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesPlan }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesFact }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesState }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesSlip }</th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, row := range calendar.Rows {
+							@calendarRow(row)
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+		@retiredMilestones(calendar)
+	</section>
+}
+
+// calendarRow is one step. A late row carries the marker of the section: the
+// row is tinted, and the state reads in the colour of a refusal.
+templ calendarRow(row CalendarRow) {
+	<tr
+		if row.Late {
+			class="border-b bg-destructive/5 last:border-0"
+		} else {
+			class="border-b last:border-0"
+		}
+	>
+		<td class="px-3 py-2 font-medium">
+			{ row.Type }
+			if row.Note != "" {
+				<span class="block text-xs font-normal text-muted-foreground">{ row.Note }</span>
+			}
+		</td>
+		<td class="px-3 py-2 whitespace-nowrap text-muted-foreground">
+			if row.Baseline == "" {
+				{ labels.Empty }
+			} else {
+				{ row.Baseline }
+			}
+		</td>
+		<td class="px-3 py-2 whitespace-nowrap">{ row.Plan }</td>
+		<td class="px-3 py-2 whitespace-nowrap">{ row.Fact }</td>
+		<td class="px-3 py-2 whitespace-nowrap">
+			@calendarStateCell(row)
+		</td>
+		<td class="px-3 py-2 whitespace-nowrap">
+			if row.Slip == "" {
+				<span class="text-muted-foreground">{ labels.Empty }</span>
+			} else {
+				<span class="text-destructive">{ row.Slip }</span>
+			}
+		</td>
+	</tr>
+}
+
+// calendarStateCell is the state of one row, and whether a done step landed on
+// time.
+templ calendarStateCell(row CalendarRow) {
+	if row.Late {
+		<span class="font-medium text-destructive">{ row.State }</span>
+	} else {
+		<span class="text-muted-foreground">{ row.State }</span>
+	}
+	if row.OnTime {
+		<span class="block text-xs text-muted-foreground">{ labels.MilestonesOnTime }</span>
+	}
+}
+
+// retiredMilestones is what left the calendar. It stays on the screen, because
+// the history of the model names these steps.
+templ retiredMilestones(calendar ModelCalendar) {
+	if len(calendar.Retired) > 0 {
+		<div class="mt-4">
+			<h3 class="mb-2 text-sm font-medium text-muted-foreground">{ labels.MilestonesRetired }</h3>
+			<ul class="space-y-1 text-sm text-muted-foreground">
+				for _, row := range calendar.Retired {
+					<li class="flex flex-wrap items-center gap-2">
+						<span class="line-through">{ row.Type }</span>
+						<span>{ row.Plan }</span>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}
