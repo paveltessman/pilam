@@ -93,6 +93,8 @@ func auditAction(entry audit.Entry) string {
 		return userAction(entry)
 	case audit.EntityMilestoneType:
 		return milestoneTypeAction(entry)
+	case audit.EntityMilestoneTemplate:
+		return milestoneTemplateAction(entry)
 	default:
 		panic(fmt.Sprintf("Unknown audit entity: %s", entry.Entity))
 	}
@@ -187,6 +189,41 @@ func milestoneTypeAction(entry audit.Entry) string {
 	return labels.AuditOther
 }
 
+// milestoneTemplateAction names a change of a milestone template. An item of
+// the template has no card of its own, so its changes are read here too.
+func milestoneTemplateAction(entry audit.Entry) string {
+	switch entry.Action {
+	case audit.ActionCreated:
+		return labels.MilestoneTemplatesAuditCreated
+	case audit.ActionItemAdded:
+		return labels.MilestoneTemplatesAuditAdded
+	case audit.ActionItemRemoved:
+		return labels.MilestoneTemplatesAuditRemoved
+	case audit.ActionItemsReordered:
+		return labels.MilestoneTemplatesAuditReorder
+	case audit.ActionDeactivated:
+		return labels.AuditOff
+	case audit.ActionReactivated:
+		return labels.AuditOn
+	case audit.ActionChanged:
+		switch entry.FieldKey {
+		case milestones.FieldName:
+			return labels.AuditName
+		case milestones.FieldDescription:
+			return labels.MilestoneTypesAuditDescription
+		case milestones.FieldOffset:
+			return labels.MilestoneTemplatesAuditOffset
+		case milestones.FieldDefault:
+			if entry.New == "true" {
+				return labels.MilestoneTemplatesAuditDefaultOn
+			}
+			return labels.MilestoneTemplatesAuditDefaultOff
+		}
+	}
+	// An action recorded and not named here.
+	return labels.AuditOther
+}
+
 // catalogAction names what the three catalog cards share: the name, and the
 // `active` flag.
 func catalogAction(entry audit.Entry) string {
@@ -209,7 +246,7 @@ func auditValue(field, value string) string {
 	switch {
 	case value == "" || value == audit.Marker:
 		return ""
-	case field == auth.FieldActive:
+	case field == auth.FieldActive || field == milestones.FieldDefault:
 		return ""
 	case field == catalog.FieldPhoto || field == catalog.FieldPhotoOrder:
 		return ""

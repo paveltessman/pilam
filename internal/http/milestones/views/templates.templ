@@ -1,0 +1,460 @@
+package views
+
+import (
+	"strconv"
+	"time"
+
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
+	shared "github.com/paveltessman/pilam/internal/http/shared/views"
+	"github.com/paveltessman/pilam/internal/milestones"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+	"github.com/paveltessman/pilam/internal/platform/validate"
+)
+
+// The fields the template screens post. The template shares three of them with
+// the type screen: the name, the description and the active flag.
+const (
+	FieldDefault   = "default"
+	FieldType      = "type"
+	FieldOffset    = "offset"
+	FieldGap       = "gap"
+	FieldItemOrder = "item_order"
+
+	// FieldTarget is the target date the preview reckons from. It is a query
+	// parameter on the editor, and every form of the editor carries it back so
+	// that a write leaves the preview where it stood.
+	FieldTarget = "target"
+)
+
+// TemplateForm is the create screen and the editor of one template.
+//
+// The create screen carries the two fields and nothing else: a template that is
+// not written yet holds no items, no preview and no trail.
+type TemplateForm struct {
+	Chrome      shared.Chrome
+	TemplateID  string
+	Name        string
+	Description string
+	Default     bool
+	Active      bool
+	Alert       string
+	Notice      string
+	Errors      validate.FieldErrors
+
+	// Items is the ordered list the editor holds, and Choices is every type the
+	// template does not hold yet.
+	Items   []TemplateRow
+	Choices []shared.SelectOption
+
+	// Target is what the preview date box holds, in the wire form. Empty until
+	// the user names a date.
+	Target string
+
+	// Trail is what the audit log holds about this template and its items,
+	// newest first.
+	Trail []shared.AuditEvent
+}
+
+// TemplateRow is one item of the template as the editor shows it. Every value
+// is already rendered: the row states what the user reads and what its controls
+// post.
+type TemplateRow struct {
+	ItemID string
+	Type   string
+	Offset string
+
+	// Gap is the days to the item above. The first row has no item above it, so
+	// it carries no gap.
+	Gap string
+
+	// Date is what the item produces from the target date of the preview. Empty
+	// until the user names a date.
+	Date string
+
+	// Earlier and Later are the whole order the two move buttons post. Each one
+	// is empty where the move has nowhere to go.
+	Earlier []string
+	Later   []string
+}
+
+// The four forms one row drives. They sit outside the table, and the controls
+// in the cells name them, because a form cannot hold a form.
+func (r TemplateRow) EditForm() string   { return "edit-" + r.ItemID }
+func (r TemplateRow) RemoveForm() string { return "remove-" + r.ItemID }
+func (r TemplateRow) UpForm() string     { return "up-" + r.ItemID }
+func (r TemplateRow) DownForm() string   { return "down-" + r.ItemID }
+
+// IsFirst reports whether the row is the top one, which is the row that carries
+// no gap.
+func (r TemplateRow) IsFirst() bool { return r.Gap == "" }
+
+// NewTemplateForm is the form of a template that already exists.
+func NewTemplateForm(chrome shared.Chrome, template milestones.Template) TemplateForm {
+	form := TemplateForm{
+		Chrome:      chrome,
+		TemplateID:  template.ID.String(),
+		Name:        template.Name,
+		Description: template.Description,
+		Default:     template.Default,
+		Active:      template.Active,
+	}
+	return form
+}
+
+// NewTemplateRows builds the item table. names holds the short name of every
+// type, and target is the day the preview reckons from, or the zero date when
+// the user named none.
+func NewTemplateRows(items []milestones.TemplateItem, names map[string]string, target time.Time) []TemplateRow {
+	gaps := milestones.Gaps(items)
+	planned := milestones.Apply(items, target)
+
+	rows := make([]TemplateRow, len(items))
+	for i, item := range items {
+		rows[i] = TemplateRow{
+			ItemID: item.ID.String(),
+			Type:   names[item.TypeID.String()],
+			Offset: strconv.Itoa(item.Offset),
+		}
+		if i > 0 {
+			rows[i].Gap = strconv.Itoa(gaps[i])
+		}
+		if !target.IsZero() {
+			rows[i].Date = labels.Date(planned[i].Plan)
+		}
+		if i > 0 {
+			rows[i].Earlier = swappedItems(items, i, i-1)
+		}
+		if i < len(items)-1 {
+			rows[i].Later = swappedItems(items, i, i+1)
+		}
+	}
+	return rows
+}
+
+// swappedItems is the order with the items at i and j trading places.
+func swappedItems(items []milestones.TemplateItem, i, j int) []string {
+	order := make([]string, len(items))
+	for at, item := range items {
+		order[at] = item.ID.String()
+	}
+	order[i], order[j] = order[j], order[i]
+	return order
+}
+
+// IsNew reports whether the form creates a template rather than editing one.
+func (f TemplateForm) IsNew() bool { return f.TemplateID == "" }
+
+// Action is where the header form posts.
+func (f TemplateForm) Action() string {
+	if f.IsNew() {
+		return paths.MilestoneTemplates
+	}
+	return paths.MilestoneTemplates + "/" + f.TemplateID
+}
+
+// ItemsAction is where the add control posts.
+func (f TemplateForm) ItemsAction() string { return f.Action() + "/items" }
+
+// OrderAction is where a move posts the whole order.
+func (f TemplateForm) OrderAction() string { return f.ItemsAction() + "/order" }
+
+// ItemAction is where the offset and the gap of one row post.
+func (f TemplateForm) ItemAction(row TemplateRow) string {
+	return f.ItemsAction() + "/" + row.ItemID
+}
+
+// RemoveAction is where the remove button of one row posts.
+func (f TemplateForm) RemoveAction(row TemplateRow) string {
+	return f.ItemAction(row) + "/remove"
+}
+
+func (f TemplateForm) Title() string {
+	if f.IsNew() {
+		return labels.MilestoneTemplatesNewTitle
+	}
+	return f.Name
+}
+
+templ Template(form TemplateForm) {
+	{{ messages := labels.Messages(form.Errors) }}
+	{{ form.Chrome.Current = labels.MilestoneTypesTitle }}
+	@shared.Page(form.Title(), form.Chrome) {
+		<main class="mx-auto w-full max-w-5xl px-6 py-10">
+			<h1 class="mb-6 text-2xl font-semibold tracking-tight">{ form.Title() }</h1>
+			@shared.FormAlert(form.Alert)
+			@shared.FormNotice(form.Notice)
+			<form method="post" action={ templ.SafeURL(form.Action()) } class="max-w-xl space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
+				@shared.FormField(shared.FieldProps{
+					Name:    FieldName,
+					Label:   labels.MilestoneTemplatesName,
+					Hint:    labels.MilestoneTemplatesNameHint,
+					Message: messages[FieldName],
+				}) {
+					@input.Input(input.Props{
+						ID:         FieldName,
+						Name:       FieldName,
+						Value:      form.Name,
+						HasError:   messages[FieldName] != "",
+						Attributes: templ.Attributes{"autocomplete": "off", "autofocus": true},
+					})
+				}
+				@shared.FormField(shared.FieldProps{
+					Name:    FieldDescription,
+					Label:   labels.MilestoneTemplatesDescription,
+					Hint:    labels.MilestoneTemplatesDescriptionHint,
+					Message: messages[FieldDescription],
+				}) {
+					@input.Input(input.Props{
+						ID:         FieldDescription,
+						Name:       FieldDescription,
+						Value:      form.Description,
+						HasError:   messages[FieldDescription] != "",
+						Attributes: templ.Attributes{"autocomplete": "off"},
+					})
+				}
+				<div class="space-y-2">
+					<label class="flex items-center gap-2 text-sm font-medium">
+						<input
+							type="checkbox"
+							id={ FieldDefault }
+							name={ FieldDefault }
+							value="true"
+							checked?={ form.Default }
+							class="size-4 rounded border border-input accent-primary"
+						/>
+						{ labels.MilestoneTemplatesDefault }
+					</label>
+					if messages[FieldDefault] != "" {
+						<p class="text-sm text-destructive">{ messages[FieldDefault] }</p>
+					} else {
+						<p class="text-sm text-muted-foreground">{ labels.MilestoneTemplatesDefaultHint }</p>
+					}
+				</div>
+				if !form.IsNew() {
+					@shared.ActiveBox(FieldActive, form.Active)
+				}
+				@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
+					{ labels.ActionSave }
+				}
+			</form>
+			if !form.IsNew() {
+				@templateItems(form, messages)
+			}
+			<div class="mt-6">
+				@button.Button(button.Props{Href: paths.Milestones, Variant: button.VariantGhost, Size: button.SizeSm}) {
+					{ labels.ActionBackToList }
+				}
+			</div>
+			if !form.IsNew() {
+				@shared.AuditTrail(form.Trail)
+			}
+		</main>
+	}
+}
+
+// templateItems is the ordered list: the preview date above it, the table of
+// the items, and the control that adds one.
+templ templateItems(form TemplateForm, messages map[string]string) {
+	<section class="mt-10">
+		<h2 class="mb-1 text-lg font-semibold tracking-tight">{ labels.MilestoneItemsTitle }</h2>
+		<p class="mb-4 text-sm text-muted-foreground">{ labels.MilestoneItemsHint }</p>
+		<form method="get" action={ templ.SafeURL(form.Action()) } class="mb-4 flex flex-wrap items-end gap-3">
+			<div class="w-56 space-y-2">
+				<label for={ FieldTarget } class="text-sm font-medium">{ labels.MilestonePreviewTarget }</label>
+				@input.Input(input.Props{
+					ID:    FieldTarget,
+					Name:  FieldTarget,
+					Type:  input.TypeDate,
+					Value: form.Target,
+				})
+			</div>
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm, Variant: button.VariantSecondary}) {
+				{ labels.ActionPreview }
+			}
+		</form>
+		if form.Target == "" && len(form.Items) > 0 {
+			<p class="mb-4 text-sm text-muted-foreground">{ labels.MilestonePreviewEmpty }</p>
+		}
+		// The two number columns refuse a value out of bound. The refusal
+		// belongs to one row, and the table is not a form, so it reads above
+		// the table rather than under the input.
+		@shared.FormAlert(messages[FieldOffset])
+		@shared.FormAlert(messages[FieldGap])
+		if len(form.Items) == 0 {
+			@shared.EmptyPanel(labels.MilestoneItemsEmpty)
+		} else {
+			@itemForms(form)
+			<div class="overflow-x-auto rounded-lg border">
+				<table class="w-full text-sm">
+					<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+						<tr>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestoneItemsOrder }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestoneItemsStep }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestoneItemsOffset }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestoneItemsGap }</th>
+							<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestoneItemsDate }</th>
+							<th scope="col" class="px-3 py-3 font-medium"><span class="sr-only">{ labels.ActionSave }</span></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, row := range form.Items {
+							@templateItemRow(row)
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+		@addTemplateItem(form, messages)
+	</section>
+}
+
+// itemForms holds the forms the cells of the table post to. They sit outside
+// the table, because a table cell inside a form cannot hold another form, and
+// every control in a cell names the form it belongs to.
+templ itemForms(form TemplateForm) {
+	<div hidden>
+		for _, row := range form.Items {
+			<form id={ row.EditForm() } method="post" action={ templ.SafeURL(form.ItemAction(row)) }>
+				@targetField(form)
+			</form>
+			<form id={ row.RemoveForm() } method="post" action={ templ.SafeURL(form.RemoveAction(row)) }>
+				@targetField(form)
+			</form>
+			if len(row.Earlier) > 0 {
+				<form id={ row.UpForm() } method="post" action={ templ.SafeURL(form.OrderAction()) }>
+					@targetField(form)
+					for _, id := range row.Earlier {
+						<input type="hidden" name={ FieldItemOrder } value={ id }/>
+					}
+				</form>
+			}
+			if len(row.Later) > 0 {
+				<form id={ row.DownForm() } method="post" action={ templ.SafeURL(form.OrderAction()) }>
+					@targetField(form)
+					for _, id := range row.Later {
+						<input type="hidden" name={ FieldItemOrder } value={ id }/>
+					}
+				</form>
+			}
+		}
+	</div>
+}
+
+// targetField carries the preview date through a write, so that the dates the
+// user is reading are still there afterwards.
+templ targetField(form TemplateForm) {
+	if form.Target != "" {
+		<input type="hidden" name={ FieldTarget } value={ form.Target }/>
+	}
+}
+
+templ templateItemRow(row TemplateRow) {
+	<tr class="border-b last:border-0">
+		<td class="px-3 py-2 whitespace-nowrap">
+			<div class="flex items-center gap-1">
+				@moveButton(row.UpForm(), len(row.Earlier) > 0, labels.ActionMoveUp, "↑")
+				@moveButton(row.DownForm(), len(row.Later) > 0, labels.ActionMoveDown, "↓")
+			</div>
+		</td>
+		<td class="px-3 py-2 font-medium whitespace-nowrap">{ row.Type }</td>
+		<td class="px-3 py-2">
+			@input.Input(input.Props{
+				ID:         FieldOffset + "-" + row.ItemID,
+				Name:       FieldOffset,
+				Form:       row.EditForm(),
+				Type:       input.TypeNumber,
+				Value:      row.Offset,
+				Class:      "w-24",
+				Attributes: templ.Attributes{"aria-label": labels.MilestoneItemsOffset},
+			})
+		</td>
+		<td class="px-3 py-2">
+			if row.IsFirst() {
+				<span class="text-muted-foreground">{ labels.Empty }</span>
+			} else {
+				@input.Input(input.Props{
+					ID:         FieldGap + "-" + row.ItemID,
+					Name:       FieldGap,
+					Form:       row.EditForm(),
+					Type:       input.TypeNumber,
+					Value:      row.Gap,
+					Class:      "w-24",
+					Attributes: templ.Attributes{"aria-label": labels.MilestoneItemsGap},
+				})
+			}
+		</td>
+		<td class="px-3 py-2 whitespace-nowrap text-muted-foreground">
+			if row.Date == "" {
+				{ labels.Empty }
+			} else {
+				{ row.Date }
+			}
+		</td>
+		<td class="px-3 py-2">
+			<div class="flex items-center justify-end gap-1">
+				@button.Button(button.Props{Type: button.TypeSubmit, Form: row.EditForm(), Size: button.SizeSm}) {
+					{ labels.ActionSave }
+				}
+				@button.Button(button.Props{
+					Type:       button.TypeSubmit,
+					Form:       row.RemoveForm(),
+					Variant:    button.VariantGhost,
+					Size:       button.SizeSm,
+					Attributes: templ.Attributes{"aria-label": labels.ActionRemove, "title": labels.ActionRemove},
+				}) {
+					✕
+				}
+			</div>
+		</td>
+	</tr>
+}
+
+// moveButton renders one arrow. A move with nowhere to go is disabled rather
+// than missing, so the two arrows keep their place in every row.
+templ moveButton(form string, enabled bool, name, arrow string) {
+	@button.Button(button.Props{
+		Type:       button.TypeSubmit,
+		Form:       form,
+		Variant:    button.VariantGhost,
+		Size:       button.SizeSm,
+		Disabled:   !enabled,
+		Attributes: templ.Attributes{"aria-label": name, "title": name},
+	}) {
+		{ arrow }
+	}
+}
+
+// addTemplateItem is the control that appends one step: a type the template
+// does not hold yet, and the offset it starts on.
+templ addTemplateItem(form TemplateForm, messages map[string]string) {
+	if messages[FieldType] != "" {
+		<p class="mt-4 text-sm text-destructive">{ messages[FieldType] }</p>
+	}
+	if len(form.Choices) == 0 {
+		<p class="mt-4 text-sm text-muted-foreground">{ labels.MilestoneItemsNoType }</p>
+	} else {
+		<form method="post" action={ templ.SafeURL(form.ItemsAction()) } class="mt-4 flex flex-wrap items-end gap-3">
+			@targetField(form)
+			<div class="w-72 space-y-2">
+				<label for={ FieldType } class="text-sm font-medium">{ labels.MilestoneItemsStep }</label>
+				@shared.SelectBox(FieldType, form.Choices, "", messages[FieldType] != "")
+				<p class="text-sm text-muted-foreground">{ labels.MilestoneItemsTypeHint }</p>
+			</div>
+			<div class="w-32 space-y-2">
+				<label for={ FieldOffset } class="text-sm font-medium">{ labels.MilestoneItemsOffset }</label>
+				@input.Input(input.Props{
+					ID:       FieldOffset,
+					Name:     FieldOffset,
+					Type:     input.TypeNumber,
+					Value:    "0",
+					HasError: messages[FieldOffset] != "",
+				})
+			</div>
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+				{ labels.ActionAddTemplateItem }
+			}
+		</form>
+	}
+}

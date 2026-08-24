@@ -28,6 +28,12 @@ const (
 	ActionAddDrop          = "Новый дроп"
 	ActionAddModel         = "Новая модель"
 	ActionAddMilestoneType = "Новый этап"
+	ActionAddTemplate      = "Новый критический путь"
+	ActionAddTemplateItem  = "Добавить этап"
+	ActionRemove           = "Удалить"
+	ActionMoveUp           = "Выше"
+	ActionMoveDown         = "Ниже"
+	ActionPreview          = "Показать даты"
 	ActionResetPasswd      = "Сбросить пароль"
 	ActionBackToList       = "Назад к списку"
 )
@@ -214,9 +220,6 @@ const (
 	MilestoneTypesEditTitle = "Карточка этапа"
 	MilestoneTypesEmpty     = "Этапов пока нет."
 
-	MilestoneTemplatesTitle = "Критические пути"
-	MilestoneTemplatesEmpty = "Шаблонов пока нет."
-
 	MilestoneTypesName            = "Название"
 	MilestoneTypesNameHint        = "Например, «Отшив»."
 	MilestoneTypesDescription     = "Описание"
@@ -224,6 +227,48 @@ const (
 
 	MilestoneTypesAuditCreated     = "Этап создан"
 	MilestoneTypesAuditDescription = "Описание изменено"
+)
+
+// The milestone templates section: the list, the create screen, and the editor
+// of one template.
+const (
+	MilestoneTemplatesTitle    = "Критические пути"
+	MilestoneTemplatesNewTitle = "Новый критический путь"
+	MilestoneTemplatesEmpty    = "Шаблонов пока нет."
+
+	MilestoneTemplatesName            = "Название"
+	MilestoneTemplatesNameHint        = "Например, «Импорт, ж/д»."
+	MilestoneTemplatesDescription     = "Описание"
+	MilestoneTemplatesDescriptionHint = "Для каких моделей этот путь."
+	MilestoneTemplatesDefault         = "Путь по умолчанию"
+	MilestoneTemplatesDefaultHint     = "Автоматически добавлять этот путь при создании новой модели."
+	MilestoneTemplatesDefaultMark     = "По умолчанию"
+
+	// The item table of the editor.
+	MilestoneItemsTitle    = "Этапы пути"
+	MilestoneItemsEmpty    = "В этом пути пока нет этапов."
+	MilestoneItemsStep     = "Добавить этап"
+	MilestoneItemsOffset   = "Сдвиг, дней"
+	MilestoneItemsGap      = "Интервал, дней"
+	MilestoneItemsDate     = "Дата"
+	MilestoneItemsOrder    = "Порядок"
+	MilestoneItemsHint     = "Сдвиг — дней до плановой даты дропа, ноль или меньше. Интервал — дней от предыдущего этапа."
+	MilestoneItemsNoType   = "Этот путь уже содержит все существующие этапы."
+	MilestoneItemsTypeHint = "Этап добавляется в конец списка."
+	MilestoneItemsStale    = "Порядок этапов устарел. Откройте страницу заново."
+
+	// The preview beside the table: a target date, and the dates the path
+	// produces from it.
+	MilestonePreviewTarget = "Плановая дата дропа"
+	MilestonePreviewEmpty  = "Укажите плановую дату дропа, чтобы увидеть даты этапов."
+
+	MilestoneTemplatesAuditCreated    = "Критический путь создан"
+	MilestoneTemplatesAuditDefaultOn  = "Путь назначен по умолчанию"
+	MilestoneTemplatesAuditDefaultOff = "Путь больше не по умолчанию"
+	MilestoneTemplatesAuditOffset     = "Сдвиг этапа изменён"
+	MilestoneTemplatesAuditAdded      = "Этап добавлен"
+	MilestoneTemplatesAuditRemoved    = "Этап удалён"
+	MilestoneTemplatesAuditReorder    = "Порядок этапов изменён"
 )
 
 // The failures in the http middleware chain

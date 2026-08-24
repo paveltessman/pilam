@@ -18,19 +18,28 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
-// ShowTypes lists every type, active and retired, by short name.
-func ShowTypes(milestoneSvc *milestones.Service) http.HandlerFunc {
+// ShowSection lists the templates a calendar is built from, and the types the
+// templates are built from. Both lists hold every row, active and retired.
+func ShowSection(milestoneSvc *milestones.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		logger := logging.FromContext(ctx)
 
-		types, err := milestoneSvc.ListTypes(ctx)
+		templates, err := milestoneSvc.ListTemplates(ctx)
 		if err != nil {
-			logging.FromContext(ctx).Error("listing milestone types failed", "err", err)
+			logger.Error("listing milestone templates failed", "err", err)
 			shared.WriteServerError(w)
 			return
 		}
 
-		page := views.MilestonesPage{Chrome: shared.Chrome(ctx), Types: types}
+		types, err := milestoneSvc.ListTypes(ctx)
+		if err != nil {
+			logger.Error("listing milestone types failed", "err", err)
+			shared.WriteServerError(w)
+			return
+		}
+
+		page := views.MilestonesPage{Chrome: shared.Chrome(ctx), Types: types, Templates: templates}
 		shared.Render(w, r, http.StatusOK, views.Milestones(page))
 	}
 	return handler
@@ -63,7 +72,7 @@ func CreateType(milestoneSvc *milestones.Service) http.HandlerFunc {
 		}
 		if err == nil {
 			logger.Info("milestone type created", "type", milestoneType.ID, "name", milestoneType.Name)
-			shared.RedirectSaved(w, r, paths.Milestones+"/"+milestoneType.ID.String())
+			shared.RedirectSaved(w, r, paths.MilestoneTypes+"/"+milestoneType.ID.String())
 			return
 		}
 
@@ -130,7 +139,7 @@ func SaveType(milestoneSvc *milestones.Service, authSvc *auth.Service, log *audi
 		}
 		if err == nil {
 			logger.Info("milestone type updated", "type", milestoneType.ID)
-			shared.RedirectSaved(w, r, paths.Milestones+"/"+form.TypeID)
+			shared.RedirectSaved(w, r, paths.MilestoneTypes+"/"+form.TypeID)
 			return
 		}
 

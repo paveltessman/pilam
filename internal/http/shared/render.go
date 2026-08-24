@@ -3,6 +3,7 @@ package shared
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/a-h/templ"
 
@@ -28,9 +29,14 @@ func Render(w http.ResponseWriter, r *http.Request, status int, component templ.
 // accepted. The screen reads the mark and reports that the changes are saved.
 const savedQuery = "saved"
 
-// RedirectSaved sends the browser to path with the saved mark on it.
+// RedirectSaved sends the browser to path with the saved mark on it. A path
+// that already carries a query keeps it.
 func RedirectSaved(w http.ResponseWriter, r *http.Request, path string) {
-	http.Redirect(w, r, path+"?"+savedQuery+"=1", http.StatusSeeOther)
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	http.Redirect(w, r, path+separator+savedQuery+"=1", http.StatusSeeOther)
 }
 
 // IsSaved reports whether the request carries the mark redirectSaved sets.

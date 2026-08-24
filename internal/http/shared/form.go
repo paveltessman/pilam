@@ -31,6 +31,23 @@ func PostedDay(r *http.Request, field string) (time.Time, error) {
 	return day, nil
 }
 
+// PostedNumber reads a number box.
+//
+// An empty box gives zero and reports false: the caller decides whether a box
+// that was left empty is a value or not.
+func PostedNumber(r *http.Request, field string) (int, bool, error) {
+	raw := strings.TrimSpace(r.PostFormValue(field))
+	if raw == "" {
+		return 0, false, nil
+	}
+
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false, validate.Fail(field, validate.NotANumber)
+	}
+	return n, true, nil
+}
+
 // PostedID reads a select box that carries an identifier.
 func PostedID(r *http.Request, field string) (ids.ID, error) {
 	raw := strings.TrimSpace(r.PostFormValue(field))

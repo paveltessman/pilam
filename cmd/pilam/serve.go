@@ -59,8 +59,9 @@ func runServe(ctx context.Context, cfg config.Config, args []string) error {
 		Atomic:  db,
 	}, idGen, trail)
 	milestoneSvc := milestones.NewService(milestones.Store{
-		Types:  postgres.NewMilestoneTypes(db),
-		Atomic: db,
+		Types:     postgres.NewMilestoneTypes(db),
+		Templates: postgres.NewMilestoneTemplates(db),
+		Atomic:    db,
 	}, idGen, trail)
 
 	srv := &http.Server{

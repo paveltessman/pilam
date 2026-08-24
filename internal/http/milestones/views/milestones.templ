@@ -17,7 +17,9 @@ const (
 	FieldActive      = "active"
 )
 
-// MilestonesPage is the list: every type, active and retired, by short name.
+// MilestonesPage is the section screen: the templates a calendar is built from,
+// and the types the templates are built from. Both lists hold every row, active
+// and retired.
 type MilestonesPage struct {
 	Chrome    shared.Chrome
 	Types     []milestones.Type
@@ -30,11 +32,33 @@ templ Milestones(page MilestonesPage) {
 		<main class="mx-auto w-full max-w-5xl px-6 py-10">
 			<div class="mb-6 flex items-center gap-4">
 				<h1 class="text-2xl font-semibold tracking-tight">{ labels.MilestoneTemplatesTitle }</h1>
+				@button.Button(button.Props{Href: paths.MilestoneTemplateNew, Size: button.SizeSm, Class: "ml-auto"}) {
+					{ labels.ActionAddTemplate }
+				}
 			</div>
-			@shared.EmptyPanel(labels.MilestoneTemplatesEmpty)
-			<div class="mb-6 mt-6 flex items-center gap-4">
+			if len(page.Templates) == 0 {
+				@shared.EmptyPanel(labels.MilestoneTemplatesEmpty)
+			} else {
+				<div class="overflow-x-auto rounded-lg border">
+					<table class="w-full text-sm">
+						<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+							<tr>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.MilestoneTemplatesName }</th>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.MilestoneTemplatesDescription }</th>
+								<th scope="col" class="px-4 py-3 font-medium">{ labels.StateColumn }</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, template := range page.Templates {
+								@milestoneTemplateRow(template)
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+			<div class="mb-6 mt-10 flex items-center gap-4">
 				<h1 class="text-2xl font-semibold tracking-tight">{ labels.MilestoneTypesTitle }</h1>
-				@button.Button(button.Props{Href: paths.Milestones + "/new", Size: button.SizeSm, Class: "ml-auto"}) {
+				@button.Button(button.Props{Href: paths.MilestoneTypeNew, Size: button.SizeSm, Class: "ml-auto"}) {
 					{ labels.ActionAddMilestoneType }
 				}
 			</div>
@@ -62,10 +86,29 @@ templ Milestones(page MilestonesPage) {
 	}
 }
 
+templ milestoneTemplateRow(template milestones.Template) {
+	<tr class="border-b last:border-0 hover:bg-muted/50">
+		<td class="px-4 py-3 whitespace-nowrap">
+			<a href={ templ.SafeURL(paths.MilestoneTemplates + "/" + template.ID.String()) } class="font-medium underline-offset-4 hover:underline">
+				{ template.Name }
+			</a>
+			if template.Default {
+				<span class="ml-2 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+					{ labels.MilestoneTemplatesDefaultMark }
+				</span>
+			}
+		</td>
+		<td class="px-4 py-3 text-muted-foreground">{ template.Description }</td>
+		<td class="px-4 py-3">
+			@shared.StateCell(template.Active)
+		</td>
+	</tr>
+}
+
 templ milestoneTypeRow(milestoneType milestones.Type) {
 	<tr class="border-b last:border-0 hover:bg-muted/50">
 		<td class="px-4 py-3 whitespace-nowrap">
-			<a href={ templ.SafeURL(paths.Milestones + "/" + milestoneType.ID.String()) } class="font-medium underline-offset-4 hover:underline">
+			<a href={ templ.SafeURL(paths.MilestoneTypes + "/" + milestoneType.ID.String()) } class="font-medium underline-offset-4 hover:underline">
 				{ milestoneType.Name }
 			</a>
 		</td>
@@ -112,9 +155,9 @@ func (f MilestoneTypeForm) IsNew() bool { return f.TypeID == "" }
 // Action is where the form posts.
 func (f MilestoneTypeForm) Action() string {
 	if f.IsNew() {
-		return paths.Milestones
+		return paths.MilestoneTypes
 	}
-	return paths.Milestones + "/" + f.TypeID
+	return paths.MilestoneTypes + "/" + f.TypeID
 }
 
 func (f MilestoneTypeForm) Title() string {
