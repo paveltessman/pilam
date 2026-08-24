@@ -29,6 +29,12 @@ const (
 	ModelOrder  = ModelPhotos + "/order"
 	ModelPhoto  = ModelPhotos + "/{photoID}/remove"
 
+	// The calendar section of the model card. A milestone carries no screen of
+	// its own: every one of these posts back to the card.
+	ModelMilestones = Model + "/milestones"
+	ModelTemplate   = ModelMilestones + "/template"
+	ModelMilestone  = ModelMilestones + "/{milestoneID}"
+
 	Seasons   = "/seasons"
 	SeasonNew = Seasons + "/new"
 	Season    = Seasons + "/{id}"

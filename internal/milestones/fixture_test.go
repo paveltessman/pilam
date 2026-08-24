@@ -11,27 +11,38 @@ import (
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/platform/clock"
+	"github.com/paveltessman/pilam/internal/platform/date"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
 var actorID = ids.MustParse("01912345-6789-7abc-def0-123456789abc")
 
+// testNow is the instant the service reads the current business day from.
+var testNow = time.Date(2026, 8, 19, 9, 0, 0, 0, time.UTC)
+
 // ---------------------------------------------------------------- fakes
 
 // store is the in-memory stand-in for the ports of the package.
 type store struct {
-	types     map[ids.ID]Type
-	templates map[ids.ID]Template
-	items     map[ids.ID]TemplateItem
-	failWith  error
+	types      map[ids.ID]Type
+	templates  map[ids.ID]Template
+	items      map[ids.ID]TemplateItem
+	milestones map[ids.ID]Milestone
+
+	// targets is the target date of the drop of every model the test wrote. A
+	// model that is not on it is a model that is not there.
+	targets  map[ids.ID]time.Time
+	failWith error
 }
 
 func newStore() *store {
 	return &store{
-		types:     make(map[ids.ID]Type),
-		templates: make(map[ids.ID]Template),
-		items:     make(map[ids.ID]TemplateItem),
+		types:      make(map[ids.ID]Type),
+		templates:  make(map[ids.ID]Template),
+		items:      make(map[ids.ID]TemplateItem),
+		milestones: make(map[ids.ID]Milestone),
+		targets:    make(map[ids.ID]time.Time),
 	}
 }
 
@@ -224,6 +235,75 @@ func (s *store) ItemReorder(_ context.Context, ordered []ids.ID) error {
 	return nil
 }
 
+// ---------------------------------------------------------------- calendar
+
+func (s *store) MilestoneByID(_ context.Context, id ids.ID) (Milestone, error) {
+	if s.failWith != nil {
+		return Milestone{}, s.failWith
+	}
+	milestone, found := s.milestones[id]
+	if !found {
+		return Milestone{}, ErrNoMilestone
+	}
+	return milestone, nil
+}
+
+func (s *store) MilestoneByModel(_ context.Context, modelID ids.ID) ([]Milestone, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+	var calendar []Milestone
+	for _, held := range s.milestones {
+		if held.ModelID == modelID {
+			calendar = append(calendar, held)
+		}
+	}
+	slices.SortFunc(calendar, func(a, b Milestone) int {
+		if !date.Equal(a.Plan, b.Plan) {
+			return a.Plan.Compare(b.Plan)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
+	return calendar, nil
+}
+
+func (s *store) MilestoneCreate(_ context.Context, in ...Milestone) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	for _, one := range in {
+		for _, held := range s.milestones {
+			if held.ModelID == one.ModelID && held.TypeID == one.TypeID {
+				return ErrTypeOnModel
+			}
+		}
+		s.milestones[one.ID] = one
+	}
+	return nil
+}
+
+func (s *store) MilestoneUpdate(_ context.Context, in Milestone) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	if _, found := s.milestones[in.ID]; !found {
+		return ErrNoMilestone
+	}
+	s.milestones[in.ID] = in
+	return nil
+}
+
+func (s *store) MilestoneTarget(_ context.Context, modelID ids.ID) (time.Time, error) {
+	if s.failWith != nil {
+		return time.Time{}, s.failWith
+	}
+	target, found := s.targets[modelID]
+	if !found {
+		return time.Time{}, ErrNoModel
+	}
+	return target, nil
+}
+
 // The ports, each one a view of the same store.
 type typesOf struct{ *store }
 
@@ -261,6 +341,24 @@ func (t templatesOf) RemoveItem(ctx context.Context, itemID ids.ID) error {
 }
 func (t templatesOf) ReorderItems(ctx context.Context, ordered []ids.ID) error {
 	return t.ItemReorder(ctx, ordered)
+}
+
+type milestonesOf struct{ *store }
+
+func (m milestonesOf) ByID(ctx context.Context, id ids.ID) (Milestone, error) {
+	return m.MilestoneByID(ctx, id)
+}
+func (m milestonesOf) ByModel(ctx context.Context, modelID ids.ID) ([]Milestone, error) {
+	return m.MilestoneByModel(ctx, modelID)
+}
+func (m milestonesOf) Create(ctx context.Context, in ...Milestone) error {
+	return m.MilestoneCreate(ctx, in...)
+}
+func (m milestonesOf) Update(ctx context.Context, in Milestone) error {
+	return m.MilestoneUpdate(ctx, in)
+}
+func (m milestonesOf) Target(ctx context.Context, modelID ids.ID) (time.Time, error) {
+	return m.MilestoneTarget(ctx, modelID)
 }
 
 // directAtomic runs the unit of work without a transaction. The domain tests do
@@ -302,13 +400,30 @@ func (f *fakeRecorder) actions() []string {
 func newTestService(t *testing.T) (*Service, *store, *fakeRecorder) {
 	t.Helper()
 
-	clk := clock.Fixed(time.Date(2026, 8, 19, 9, 0, 0, 0, time.UTC), time.UTC)
+	clk := clock.Fixed(testNow, time.UTC)
 	recorder := &fakeRecorder{}
 	trail := audit.NewTrail(recorder, clk, ids.NewDeterministic(100))
 
 	rows := newStore()
-	stores := Store{Types: typesOf{rows}, Templates: templatesOf{rows}, Atomic: directAtomic{}}
-	return NewService(stores, ids.NewDeterministic(1), trail), rows, recorder
+	stores := Store{
+		Types:      typesOf{rows},
+		Templates:  templatesOf{rows},
+		Milestones: milestonesOf{rows},
+		Atomic:     directAtomic{},
+	}
+	return NewService(stores, ids.NewDeterministic(1), clk, trail), rows, recorder
+}
+
+// modelIDs names the models a test writes. The catalog owns the row, so the
+// identifier comes from outside the package under test.
+var modelIDs = ids.NewDeterministic(900)
+
+// aModel writes the target date of the drop of a model and returns the model.
+// The catalog owns the row: the calendar only knows the date.
+func aModel(rows *store, target string) ids.ID {
+	modelID := modelIDs.New()
+	rows.targets[modelID] = date.MustParse(target)
+	return modelID
 }
 
 // signedIn is a context carrying the actor every write is recorded against.

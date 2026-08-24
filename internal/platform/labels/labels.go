@@ -211,6 +211,7 @@ const (
 	ModelsAuditPhotoAdded   = "Фото добавлено"
 	ModelsAuditPhotoRemoved = "Фото удалено"
 	ModelsAuditPhotoReorder = "Порядок фотографий изменён"
+	ModelsAuditTemplate     = "Критический путь применён"
 )
 
 // The milestone types section
@@ -269,6 +270,60 @@ const (
 	MilestoneTemplatesAuditAdded      = "Этап добавлен"
 	MilestoneTemplatesAuditRemoved    = "Этап удалён"
 	MilestoneTemplatesAuditReorder    = "Порядок этапов изменён"
+)
+
+// The calendar section of the model screen.
+const (
+	MilestonesTitle = "Критический путь"
+	MilestonesHint  = "Этапы модели в порядке плановых дат."
+	MilestonesEmpty = "У модели пока нет критического пути."
+
+	MilestonesStep     = "Этап"
+	MilestonesBaseline = "База"
+	MilestonesPlan     = "План"
+	MilestonesFact     = "Факт"
+	MilestonesState    = "Статус"
+	MilestonesSlip     = "Отклонение"
+
+	MilestonesStateDone    = "Готово"
+	MilestonesStateLate    = "Просрочен"
+	MilestonesStateDue     = "Скоро"
+	MilestonesStatePlanned = "В плане"
+
+	MilestonesOnTime  = "В срок"
+	MilestonesNote    = "Комментарий"
+	MilestonesRetired = "Снятые этапы"
+
+	// The two controls of the section: apply a critical path, and add one step
+	// the model does not hold.
+	MilestonesTemplate     = "Критический путь"
+	MilestonesTemplateHint = "Добавляет этапы, которых у модели ещё нет. Даты уже стоящих этапов не меняются."
+	MilestonesNoTemplate   = "Активных критических путей пока нет."
+	MilestonesAddStep      = "Добавить этап"
+	MilestonesAddStepHint  = "Этап вне критического пути. Укажите плановую дату."
+	MilestonesNoType       = "У модели уже есть все существующие этапы."
+	MilestonesStale        = "Этап уже изменён. Откройте страницу заново."
+)
+
+// The actions of the calendar section.
+const (
+	ActionApplyTemplate  = "Применить путь"
+	ActionAddMilestone   = "Добавить"
+	ActionFactToday      = "Сегодня"
+	ActionFactClear      = "Снять факт"
+	ActionRetireStep     = "Снять этап"
+	ActionRestoreStep    = "Вернуть этап"
+	ActionMilestoneEdits = "Даты этапа"
+)
+
+// The calendar of one model: what the trail of a milestone reads as.
+const (
+	MilestonesAuditCreated     = "Этап добавлен"
+	MilestonesAuditPlan        = "План перенесён"
+	MilestonesAuditFact        = "Факт проставлен"
+	MilestonesAuditFactMoved   = "Факт изменён"
+	MilestonesAuditFactCleared = "Факт снят"
+	MilestonesAuditNote        = "Комментарий изменён"
 )
 
 // The failures in the http middleware chain

@@ -50,18 +50,18 @@ func (a *Audit) Record(ctx context.Context, entries ...audit.Entry) error {
 	return a.db.InTx(ctx, write)
 }
 
-// ByEntity returns the entries of one entity, newest first, at most limit of
-// them. Index over (entity, entity_id, at DESC).
-func (a *Audit) ByEntity(ctx context.Context, entity string, entityID ids.ID, limit int) ([]audit.Entry, error) {
+// ByEntities returns the entries of the rows named, newest first, at most limit
+// of them. Index over (entity, entity_id, at DESC).
+func (a *Audit) ByEntities(ctx context.Context, entity string, entityIDs []ids.ID, limit int) ([]audit.Entry, error) {
 	params := sqlc.ListAuditEntriesParams{
-		Entity:   entity,
-		EntityID: entityID,
-		RowLimit: int32(limit),
+		Entity:    entity,
+		EntityIds: entityIDs,
+		RowLimit:  int32(limit),
 	}
 
 	rows, err := a.db.queries(ctx).ListAuditEntries(ctx, params)
 	if err != nil {
-		return nil, fmt.Errorf("postgres: listing the trail of %s %s: %w", entity, entityID, err)
+		return nil, fmt.Errorf("postgres: listing the trail of %d %s rows: %w", len(entityIDs), entity, err)
 	}
 
 	entries := make([]audit.Entry, len(rows))

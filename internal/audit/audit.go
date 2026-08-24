@@ -26,6 +26,7 @@ const (
 	EntityModel             = "model"
 	EntityMilestoneType     = "milestone_type"
 	EntityMilestoneTemplate = "milestone_template"
+	EntityMilestone         = "milestone"
 )
 
 // The actions the trail names.
@@ -48,6 +49,13 @@ const (
 	ActionItemAdded      = "item_added"
 	ActionItemRemoved    = "item_removed"
 	ActionItemsReordered = "items_reordered"
+
+	// The calendar of a model. Applying a template writes many milestones at
+	// once, so it is one action of the model. Every later change belongs to the
+	// milestone it moved.
+	ActionTemplateApplied = "template_applied"
+	ActionFactStamped     = "fact_stamped"
+	ActionFactCleared     = "fact_cleared"
 )
 
 // Marker stands in for a value the trail must not hold, such as a password. The

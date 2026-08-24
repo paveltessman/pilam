@@ -304,13 +304,12 @@ func (p photosOf) Add(ctx context.Context, in catalog.Photo) error { return p.ph
 func (p photosOf) Remove(ctx context.Context, id ids.ID) error     { return p.photoRemove(ctx, id) }
 func (p photosOf) Reorder(ctx context.Context, o []ids.ID) error   { return p.photoReorder(ctx, o) }
 
-// CatalogServiceOn returns the service the test router is wired with, recording
-// to the trail the test reads back.
-func CatalogServiceOn(t *testing.T, trail *Trail) *catalog.Service {
+// catalogServiceOn returns the service the test router is wired with, recording
+// to the trail the test reads back and writing to the rows given.
+func catalogServiceOn(t *testing.T, trail *Trail, rows *catalogStore) *catalog.Service {
 	t.Helper()
 
 	gen := ids.NewGenerator()
-	rows := newCatalogStore()
 	stores := catalog.Stores{
 		Seasons: seasonsOf{rows},
 		Drops:   dropsOf{rows},

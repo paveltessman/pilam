@@ -17,6 +17,7 @@ import (
 	"github.com/paveltessman/pilam/internal/http/models/views"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	"github.com/paveltessman/pilam/internal/http/shared"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 	"github.com/paveltessman/pilam/internal/platform/logging"
@@ -139,9 +140,15 @@ func Create(catalogSvc *catalog.Service) http.HandlerFunc {
 
 // Show renders the screen header of one model, and the audit trail of that
 // model under it.
-func Show(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
+func Show(
+	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
-		card, ok := modelCard(w, r, catalogSvc, authSvc, log, store)
+		card, ok := modelCard(w, r, catalogSvc, milestoneSvc, authSvc, log, store)
 		if !ok {
 			return
 		}
@@ -154,7 +161,13 @@ func Show(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, st
 }
 
 // Save writes the article and the active flag.
-func Save(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
+func Save(
+	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -182,7 +195,7 @@ func Save(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, st
 			return
 		}
 
-		card, ok := modelCard(w, r, catalogSvc, authSvc, log, store)
+		card, ok := modelCard(w, r, catalogSvc, milestoneSvc, authSvc, log, store)
 		if !ok {
 			return
 		}
@@ -200,7 +213,13 @@ func Save(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, st
 //
 // One refused file stops the upload there. The files stored before it keep
 // their place on the strip, because each photo is a write of its own.
-func AddPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
+func AddPhotos(
+	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -212,7 +231,7 @@ func AddPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Lo
 
 		if err := r.ParseMultipartForm(photoUploadMemory); err != nil {
 			logger.Info("the upload is not a readable form", "model", model.ID, "err", err)
-			refusePhotos(w, r, catalogSvc, authSvc, log, store, labels.ModelsPhotoNone)
+			refusePhotos(w, r, catalogSvc, milestoneSvc, authSvc, log, store, labels.ModelsPhotoNone)
 			return
 		}
 		defer func() { _ = r.MultipartForm.RemoveAll() }()
@@ -220,7 +239,7 @@ func AddPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Lo
 		files := r.MultipartForm.File[views.FieldModelPhoto]
 		if len(files) == 0 {
 			logger.Info("the upload names no file", "model", model.ID)
-			refusePhotos(w, r, catalogSvc, authSvc, log, store, labels.ModelsPhotoNone)
+			refusePhotos(w, r, catalogSvc, milestoneSvc, authSvc, log, store, labels.ModelsPhotoNone)
 			return
 		}
 
@@ -229,7 +248,7 @@ func AddPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Lo
 			switch {
 			case alert != "":
 				logger.Info("photo refused", "model", model.ID, "file", file.Filename, "err", err)
-				refusePhotos(w, r, catalogSvc, authSvc, log, store, alert)
+				refusePhotos(w, r, catalogSvc, milestoneSvc, authSvc, log, store, alert)
 				return
 			case err != nil:
 				logger.Error("storing a photo failed", "model", model.ID, "file", file.Filename, "err", err)
@@ -316,7 +335,13 @@ func RemovePhoto(catalogSvc *catalog.Service) http.HandlerFunc {
 
 // ReorderPhotos writes the strip in the posted order. The first
 // identifier becomes the cover.
-func ReorderPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audit.Log, store media.Store) http.HandlerFunc {
+func ReorderPhotos(
+	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -340,7 +365,7 @@ func ReorderPhotos(catalogSvc *catalog.Service, authSvc *auth.Service, log *audi
 			// The order names a strip the model no longer holds, which is a
 			// screen the user opened before somebody else changed it.
 			logger.Info("photo order refused", "model", model.ID, "err", err)
-			refusePhotos(w, r, catalogSvc, authSvc, log, store, labels.ModelsPhotoOrder)
+			refusePhotos(w, r, catalogSvc, milestoneSvc, authSvc, log, store, labels.ModelsPhotoOrder)
 			return
 
 		default:
@@ -356,12 +381,13 @@ func refusePhotos(
 	w http.ResponseWriter,
 	r *http.Request,
 	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
 	authSvc *auth.Service,
 	log *audit.Log,
 	store media.Store,
 	alert string,
 ) {
-	card, ok := modelCard(w, r, catalogSvc, authSvc, log, store)
+	card, ok := modelCard(w, r, catalogSvc, milestoneSvc, authSvc, log, store)
 	if !ok {
 		return
 	}
@@ -376,6 +402,7 @@ func modelCard(
 	w http.ResponseWriter,
 	r *http.Request,
 	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
 	authSvc *auth.Service,
 	log *audit.Log,
 	store media.Store,
@@ -394,20 +421,27 @@ func modelCard(
 		return views.ModelCard{}, false
 	}
 
-	trail, ok := shared.LoadTrail(w, r, authSvc, log, audit.EntityModel, model.ID)
+	held, ok := loadCalendar(w, r, milestoneSvc, model.ID)
+	if !ok {
+		return views.ModelCard{}, false
+	}
+
+	// The card shows the history of the model and of its steps as one.
+	trail, ok := shared.LoadTrailOf(w, r, authSvc, log, held.steps, held.scopes(model.ID)...)
 	if !ok {
 		return views.ModelCard{}, false
 	}
 
 	card := views.ModelCard{
-		Chrome:  shared.Chrome(ctx),
-		ModelID: model.ID.String(),
-		Article: model.Article,
-		Active:  model.Active,
-		Season:  season,
-		Drop:    drop,
-		Photos:  views.NewModelStrip(photos, store.URL),
-		Trail:   trail,
+		Chrome:   shared.Chrome(ctx),
+		ModelID:  model.ID.String(),
+		Article:  model.Article,
+		Active:   model.Active,
+		Season:   season,
+		Drop:     drop,
+		Photos:   views.NewModelStrip(photos, store.URL),
+		Calendar: held.section,
+		Trail:    trail,
 	}
 	return card, true
 }

@@ -73,3 +73,39 @@ UPDATE milestone_template_item
 SET position   = $2,
     updated_at = now()
 WHERE id = $1;
+
+-- name: GetMilestone :one
+SELECT * FROM milestone
+WHERE id = $1;
+
+-- name: ListMilestonesByModel :many
+-- The calendar of one model, active and inactive, in plan date order. Two
+-- milestones on the same day break the tie by identifier, so the order of a
+-- read never changes between two calls.
+SELECT * FROM milestone
+WHERE model_id = $1
+ORDER BY plan_date, id;
+
+-- name: CreateMilestone :exec
+INSERT INTO milestone (
+    id, model_id, type_id, baseline_date, plan_date, fact_date, note, active
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+
+-- name: UpdateMilestone :execrows
+UPDATE milestone
+SET baseline_date = $2,
+    plan_date     = $3,
+    fact_date     = $4,
+    note          = $5,
+    active        = $6,
+    updated_at    = now()
+WHERE id = $1;
+
+-- name: GetModelTargetDate :one
+-- The day every date of a model is reckoned from. The model holds no date of
+-- its own, so this reads the drop that holds it.
+SELECT drop.target_date
+FROM model
+JOIN drop ON drop.id = model.drop_id
+WHERE model.id = $1;
