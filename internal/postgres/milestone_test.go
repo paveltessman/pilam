@@ -71,6 +71,8 @@ func names(types []milestones.Type) []string {
 }
 
 func TestMilestoneWriteRollsBackWithTransaction(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 
 	sentinel := errors.New("the work after the write failed")

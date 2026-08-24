@@ -9,6 +9,8 @@ import (
 )
 
 func TestDropsRoundTripEveryField(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	want := store.drop(t, season, "Drop 1", "2027-02-15")
@@ -24,6 +26,8 @@ func TestDropsRoundTripEveryField(t *testing.T) {
 }
 
 func TestDropsHoldOneNamePerSeason(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	first := store.season(t, "S1", "2026-11-01")
 	second := store.season(t, "S2", "2027-05-01")
@@ -46,6 +50,8 @@ func TestDropsHoldOneNamePerSeason(t *testing.T) {
 
 // The drop keeps the season it was created in.
 func TestDropsUpdateLeavesTheSeasonAsItStands(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	first := store.season(t, "S1", "2026-11-01")
 	second := store.season(t, "S2", "2027-05-01")
@@ -70,6 +76,8 @@ func TestDropsUpdateLeavesTheSeasonAsItStands(t *testing.T) {
 }
 
 func TestDropsListBySeasonOrdersByTargetDate(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	other := store.season(t, "S2", "2027-05-01")
@@ -88,6 +96,8 @@ func TestDropsListBySeasonOrdersByTargetDate(t *testing.T) {
 }
 
 func TestDropsReportMissingRowAsErrNoDrop(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 
 	if _, err := store.drops.ByID(t.Context(), gen.New()); !errors.Is(err, catalog.ErrNoDrop) {

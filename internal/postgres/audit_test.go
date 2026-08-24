@@ -80,6 +80,8 @@ func stored(t *testing.T, db *DB) []audit.Entry {
 }
 
 func TestAuditRoundTripsEveryField(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 	want := sampleEntry(actor.ID, actor.ID)
 
@@ -97,6 +99,8 @@ func TestAuditRoundTripsEveryField(t *testing.T) {
 }
 
 func TestAuditStoresAbsentValueAsNull(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 
 	created := sampleEntry(actor.ID, actor.ID)
@@ -120,6 +124,8 @@ func TestAuditStoresAbsentValueAsNull(t *testing.T) {
 }
 
 func TestAuditRecordsEveryEntryItGets(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 
 	first := sampleEntry(actor.ID, actor.ID)
@@ -136,6 +142,8 @@ func TestAuditRecordsEveryEntryItGets(t *testing.T) {
 }
 
 func TestAuditRecordWithoutEntriesWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, _ := auditDB(t)
 
 	if err := recorder.Record(t.Context()); err != nil {
@@ -148,6 +156,8 @@ func TestAuditRecordWithoutEntriesWritesNothing(t *testing.T) {
 }
 
 func TestAuditEntryRollsBackWithTheWriteItDescribes(t *testing.T) {
+	t.Parallel()
+
 	recorder, users, actor := auditDB(t)
 	failure := errors.New("the work failed after the write")
 	target := sample("ada@example.com", "Ada")
@@ -177,6 +187,8 @@ func TestAuditEntryRollsBackWithTheWriteItDescribes(t *testing.T) {
 }
 
 func TestAuditEntryLandsWithTheWriteItDescribes(t *testing.T) {
+	t.Parallel()
+
 	recorder, users, actor := auditDB(t)
 	target := sample("ada@example.com", "Ada")
 
@@ -203,6 +215,8 @@ func TestAuditEntryLandsWithTheWriteItDescribes(t *testing.T) {
 }
 
 func TestAuditRefusesActorWithNoRow(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 	unknown := sampleEntry(gen.New(), actor.ID)
 
@@ -216,6 +230,8 @@ func TestAuditRefusesActorWithNoRow(t *testing.T) {
 }
 
 func TestNewAuditRefusesNilDatabase(t *testing.T) {
+	t.Parallel()
+
 	defer func() {
 		if recover() == nil {
 			t.Error("NewAudit accepted a nil database")
@@ -225,6 +241,8 @@ func TestNewAuditRefusesNilDatabase(t *testing.T) {
 }
 
 func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
+	t.Parallel()
+
 	recorder, users, actor := auditDB(t)
 	other := create(t, users, sample("grace@example.com", "Ada"))
 
@@ -265,6 +283,8 @@ func TestAuditByEntityReturnsTheNewestFirst(t *testing.T) {
 }
 
 func TestAuditByEntityHoldsToTheLimit(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 
 	newest := sampleEntry(actor.ID, actor.ID)
@@ -288,6 +308,8 @@ func TestAuditByEntityHoldsToTheLimit(t *testing.T) {
 // A NULL value column reads back as the empty string, which is the form the
 // domain states a missing side in.
 func TestAuditByEntityReadsAbsentValueAsEmpty(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 
 	created := sampleEntry(actor.ID, actor.ID)
@@ -313,6 +335,8 @@ func TestAuditByEntityReadsAbsentValueAsEmpty(t *testing.T) {
 }
 
 func TestAuditByEntityReadsNothingForAnEntityWithNoEntries(t *testing.T) {
+	t.Parallel()
+
 	recorder, _, actor := auditDB(t)
 
 	held, err := recorder.ByEntity(t.Context(), audit.EntityUser, actor.ID, 10)

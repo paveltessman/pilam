@@ -10,6 +10,8 @@ import (
 )
 
 func TestPhotosRoundTripTheStripInOrder(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	drop := store.drop(t, season, "Drop 1", "2027-02-15")
@@ -30,6 +32,8 @@ func TestPhotosRoundTripTheStripInOrder(t *testing.T) {
 // A reorder swaps two positions inside one transaction. The unique constraint
 // over (model_id, position) is deferred, so the swap is not a violation.
 func TestPhotosReorderSwapsTwoPositions(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	drop := store.drop(t, season, "Drop 1", "2027-02-15")
@@ -57,6 +61,8 @@ func TestPhotosReorderSwapsTwoPositions(t *testing.T) {
 // The list reads the cover of a whole page in one query: the photo at position
 // 0 of every model named, and nothing for a model that holds none.
 func TestPhotosThumbnailsAreTheCoverOfEachModelNamed(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	drop := store.drop(t, season, "Drop 1", "2027-02-15")
@@ -82,6 +88,8 @@ func TestPhotosThumbnailsAreTheCoverOfEachModelNamed(t *testing.T) {
 }
 
 func TestPhotosRemoveDeletesOneRow(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	drop := store.drop(t, season, "Drop 1", "2027-02-15")

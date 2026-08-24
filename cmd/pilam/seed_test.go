@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -111,6 +112,8 @@ func TestSeedRunsTwiceOverTheSameDatabase(t *testing.T) {
 }
 
 func TestSeedRefusesFlagsItCantWorkFrom(t *testing.T) {
+	// Every case here fails while reading the flags, before seed opens the
+	// database, so the address never has to answer.
 	cfg := config.Config{
 		Database: config.Database{URL: "postgres://pilam:pilam@127.0.0.1:1/pilam"},
 		Timezone: time.UTC,
@@ -120,7 +123,6 @@ func TestSeedRefusesFlagsItCantWorkFrom(t *testing.T) {
 		"unknown flag":      {"-employees", seedCount},
 		"a bad user count":  {"-users", "many"},
 		"a bad model count": {"-models", "many"},
-		"no connection":     {"-users", seedCount},
 	}
 
 	for name, args := range cases {
@@ -129,6 +131,25 @@ func TestSeedRefusesFlagsItCantWorkFrom(t *testing.T) {
 				t.Error("seed accepted the arguments")
 			}
 		})
+	}
+}
+
+// The flags are good here, so seed gets as far as the database. pgxpool keeps
+// retrying a refused connection until the context runs out, so a closed port
+// costs the whole connect timeout. The caller's own deadline is the shorter of
+// the two; the test uses that rather than sitting out the boot-time one.
+func TestSeedRefusesADatabaseItCantReach(t *testing.T) {
+	cfg := config.Config{
+		Database: config.Database{URL: "postgres://pilam:pilam@127.0.0.1:1/pilam"},
+		Timezone: time.UTC,
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+
+	var out bytes.Buffer
+	if err := seedAll(ctx, cfg, &out, []string{"-users", seedCount}); err == nil {
+		t.Error("seed ran against a closed port")
 	}
 }
 

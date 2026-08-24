@@ -10,6 +10,8 @@ import (
 )
 
 func TestSeasonsRoundTripEveryField(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	want := store.season(t, "S1", "2026-11-01")
 
@@ -25,6 +27,8 @@ func TestSeasonsRoundTripEveryField(t *testing.T) {
 
 // A date column is a calendar day. pgx must hand it back as UTC midnight.
 func TestSeasonsReadTheStartDateAsUTCMidnight(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	want := store.season(t, "S1", "2026-11-01")
 
@@ -42,6 +46,8 @@ func TestSeasonsReadTheStartDateAsUTCMidnight(t *testing.T) {
 }
 
 func TestSeasonsReportMissingRowAsErrNoSeason(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 
 	if _, err := store.seasons.ByID(t.Context(), gen.New()); !errors.Is(err, catalog.ErrNoSeason) {
@@ -55,6 +61,8 @@ func TestSeasonsReportMissingRowAsErrNoSeason(t *testing.T) {
 }
 
 func TestSeasonsRefuseATakenNameWhateverTheCase(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	store.season(t, "S1", "2026-11-01")
 
@@ -67,6 +75,8 @@ func TestSeasonsRefuseATakenNameWhateverTheCase(t *testing.T) {
 }
 
 func TestSeasonsUpdateWritesEveryFieldAndStampsTheRow(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	want := store.season(t, "S1", "2026-11-01")
 
@@ -93,6 +103,8 @@ func TestSeasonsUpdateWritesEveryFieldAndStampsTheRow(t *testing.T) {
 }
 
 func TestSeasonsListOrdersByStartDate(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	store.season(t, "A1", "2027-05-01")
 	store.season(t, "S1", "2026-11-01")

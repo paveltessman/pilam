@@ -60,6 +60,8 @@ func sameUser(t *testing.T, got, want auth.User) {
 }
 
 func TestUsersRoundTripEveryField(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	want := create(t, users, sample("ada@example.com", "Ada"))
 
@@ -71,6 +73,8 @@ func TestUsersRoundTripEveryField(t *testing.T) {
 }
 
 func TestUsersByEmailIgnoresCase(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	want := create(t, users, sample("ada@example.com", "Ada"))
 
@@ -82,6 +86,8 @@ func TestUsersByEmailIgnoresCase(t *testing.T) {
 }
 
 func TestUsersReportMissingRowAsErrNoUser(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 
 	if _, err := users.ByID(t.Context(), gen.New()); !errors.Is(err, auth.ErrNoUser) {
@@ -93,6 +99,8 @@ func TestUsersReportMissingRowAsErrNoUser(t *testing.T) {
 }
 
 func TestUsersRefuseTakenEmail(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	create(t, users, sample("ada@example.com", "Ada"))
 
@@ -105,6 +113,8 @@ func TestUsersRefuseTakenEmail(t *testing.T) {
 }
 
 func TestUsersHoldEmailOfInactiveUser(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	taken := sample("ada@example.com", "Ada")
 	taken.Active = false
@@ -116,6 +126,8 @@ func TestUsersHoldEmailOfInactiveUser(t *testing.T) {
 }
 
 func TestUsersUpdateWritesEveryField(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	want := create(t, users, sample("ada@example.com", "Ada"))
 
@@ -149,6 +161,8 @@ func TestUsersUpdateWritesEveryField(t *testing.T) {
 }
 
 func TestUsersListOrdersByFirstNameAndHoldsInactiveRows(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	create(t, users, sample("bob@example.com", "Bob"))
 	create(t, users, sample("ada@example.com", "Ada"))
@@ -169,6 +183,8 @@ func TestUsersListOrdersByFirstNameAndHoldsInactiveRows(t *testing.T) {
 }
 
 func TestUsersListIsEmptyWithoutRows(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 
 	got, err := users.List(t.Context())
@@ -181,6 +197,8 @@ func TestUsersListIsEmptyWithoutRows(t *testing.T) {
 }
 
 func TestUsersUpdateReportsMissingRow(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 
 	if err := users.Update(t.Context(), sample("ada@example.com", "Ada")); !errors.Is(err, auth.ErrNoUser) {
@@ -189,6 +207,8 @@ func TestUsersUpdateReportsMissingRow(t *testing.T) {
 }
 
 func TestUsersUpdateRefusesTakenEmail(t *testing.T) {
+	t.Parallel()
+
 	users := usersDB(t)
 	create(t, users, sample("ada@example.com", "Ada"))
 	mover := create(t, users, sample("grace@example.com", "Ada"))
@@ -200,6 +220,8 @@ func TestUsersUpdateRefusesTakenEmail(t *testing.T) {
 }
 
 func TestUsersWriteRollsBackWithTransaction(t *testing.T) {
+	t.Parallel()
+
 	db := openTestDB(t)
 	users := NewUsers(db)
 
@@ -222,6 +244,8 @@ func TestUsersWriteRollsBackWithTransaction(t *testing.T) {
 }
 
 func TestUsersWriteCommitsWithTransaction(t *testing.T) {
+	t.Parallel()
+
 	db := openTestDB(t)
 	users := NewUsers(db)
 	user := sample("ada@example.com", "Ada")

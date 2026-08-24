@@ -9,6 +9,8 @@ import (
 )
 
 func TestModelsRoundTripEveryField(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	drop := store.drop(t, season, "Drop 1", "2027-02-15")
@@ -26,6 +28,8 @@ func TestModelsRoundTripEveryField(t *testing.T) {
 
 // The season filter reaches every drop of the season, through the join.
 func TestModelsFilterBySeasonAcrossEveryDropOfIt(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	other := store.season(t, "S2", "2027-05-01")
@@ -56,6 +60,8 @@ func TestModelsFilterBySeasonAcrossEveryDropOfIt(t *testing.T) {
 }
 
 func TestModelsFilterByTheActiveFlag(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 	drop := store.drop(t, season, "Drop 1", "2027-02-15")
@@ -89,6 +95,8 @@ func TestModelsFilterByTheActiveFlag(t *testing.T) {
 }
 
 func TestModelsReportMissingRowAsErrNoModel(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 
 	if _, err := store.models.ByID(t.Context(), gen.New()); !errors.Is(err, catalog.ErrNoModel) {
