@@ -35,6 +35,10 @@ type MilestoneUpdateParams struct {
 	Active bool
 }
 
+// Today is the current business day. A screen offers it as the fact date of a
+// step that is done, and it bounds the fact date box.
+func (s *Service) Today() time.Time { return s.clock.Today() }
+
 // Calendar returns every milestone of one model, active and inactive, in plan
 // date order, with the state each of them holds today.
 //

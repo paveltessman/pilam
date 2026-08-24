@@ -83,3 +83,45 @@ func ParsedID(t *testing.T, id string) ids.ID {
 	}
 	return parsed
 }
+
+// MilestoneTemplateForm is what the template create and edit screen post.
+func MilestoneTemplateForm(name, description string, isDefault, active bool) url.Values {
+	form := url.Values{
+		milestoneviews.FieldName:        {name},
+		milestoneviews.FieldDescription: {description},
+	}
+	if isDefault {
+		form.Set(milestoneviews.FieldDefault, "true")
+	}
+	if active {
+		form.Set(milestoneviews.FieldActive, "true")
+	}
+	return form
+}
+
+// CreatedMilestoneTemplate posts the create form and returns the id of the
+// template it wrote. The screen is root only.
+func CreatedMilestoneTemplate(t *testing.T, d Deps, cookie *http.Cookie, name, description string) string {
+	t.Helper()
+
+	form := MilestoneTemplateForm(name, description, false, true)
+	rec := PostAs(t, d, paths.MilestoneTemplates, form, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("creating milestone template %q: status = %d, want %d: %s",
+			name, rec.Code, http.StatusSeeOther, rec.Body)
+	}
+	return IDOfRedirect(t, rec, paths.MilestoneTemplates)
+}
+
+// AddedTemplateItem appends one step to a template, at the offset given in days
+// from the target date of the drop.
+func AddedTemplateItem(t *testing.T, d Deps, cookie *http.Cookie, templateID, typeID, offset string) {
+	t.Helper()
+
+	form := url.Values{milestoneviews.FieldType: {typeID}, milestoneviews.FieldOffset: {offset}}
+	path := paths.MilestoneTemplates + "/" + templateID + "/items"
+	if rec := PostAs(t, d, path, form, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("adding item %s at %s: status = %d, want %d: %s",
+			typeID, offset, rec.Code, http.StatusSeeOther, rec.Body)
+	}
+}

@@ -120,7 +120,7 @@ templ Model(card ModelCard) {
 				}
 			</form>
 			@modelPhotos(card)
-			@modelCalendar(card.Calendar)
+			@modelCalendar(card.Calendar, messages)
 			<div class="mt-6">
 				@button.Button(button.Props{Href: paths.Models, Variant: button.VariantGhost, Size: button.SizeSm}) {
 					{ labels.ActionBackToList }

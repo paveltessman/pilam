@@ -293,6 +293,27 @@ const (
 	MilestonesOnTime  = "В срок"
 	MilestonesNote    = "Комментарий"
 	MilestonesRetired = "Снятые этапы"
+
+	// The two controls of the section: apply a critical path, and add one step
+	// the model does not hold.
+	MilestonesTemplate     = "Критический путь"
+	MilestonesTemplateHint = "Добавляет этапы, которых у модели ещё нет. Даты уже стоящих этапов не меняются."
+	MilestonesNoTemplate   = "Активных критических путей пока нет."
+	MilestonesAddStep      = "Добавить этап"
+	MilestonesAddStepHint  = "Этап вне критического пути. Укажите плановую дату."
+	MilestonesNoType       = "У модели уже есть все существующие этапы."
+	MilestonesStale        = "Этап уже изменён. Откройте страницу заново."
+)
+
+// The actions of the calendar section.
+const (
+	ActionApplyTemplate  = "Применить путь"
+	ActionAddMilestone   = "Добавить"
+	ActionFactToday      = "Сегодня"
+	ActionFactClear      = "Снять факт"
+	ActionRetireStep     = "Снять этап"
+	ActionRestoreStep    = "Вернуть этап"
+	ActionMilestoneEdits = "Даты этапа"
 )
 
 // The calendar of one model: what the trail of a milestone reads as.
