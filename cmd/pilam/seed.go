@@ -10,6 +10,7 @@ import (
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -28,6 +29,11 @@ seed: catalog
   drops:   %d created, %d already there
   models:  %d created, %d already there
   photos:  %d written
+
+seed: milestones
+  types:     %d created, %d already there
+  templates: %d created, %d already there
+  steps:     %d created, %d already there
 
 Every seeded user logs in with that one password.
 `
@@ -76,6 +82,12 @@ func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 			Photos:  postgres.NewPhotos(db),
 			Atomic:  db,
 		}, idGen, trail),
+		Milestones: milestones.NewService(milestones.Store{
+			Types:      postgres.NewMilestoneTypes(db),
+			Templates:  postgres.NewMilestoneTemplates(db),
+			Milestones: postgres.NewMilestones(db),
+			Atomic:     db,
+		}, idGen, clk, trail),
 	}
 
 	report, err := seed.Run(ctx, deps, seed.Options{
@@ -88,13 +100,16 @@ func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 		return err
 	}
 
-	rows := report.Catalog
+	rows, calendar := report.Catalog, report.Milestones
 	_, err = fmt.Fprintf(out, seedReport,
 		report.Users.Created, report.Users.Skipped, report.Users.Passwd,
 		rows.Seasons.Created, rows.Seasons.Skipped,
 		rows.Drops.Created, rows.Drops.Skipped,
 		rows.Models.Created, rows.Models.Skipped,
 		rows.Photos,
+		calendar.Types.Created, calendar.Types.Skipped,
+		calendar.Templates.Created, calendar.Templates.Skipped,
+		calendar.Steps.Created, calendar.Steps.Skipped,
 	)
 	if err != nil {
 		return fmt.Errorf("seed: the dataset is loaded, but printing the report failed: %w", err)
