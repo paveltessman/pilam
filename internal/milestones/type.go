@@ -8,12 +8,6 @@ import (
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/platform/ids"
-	"github.com/paveltessman/pilam/internal/platform/validate"
-)
-
-const (
-	MaxNameLen        = 30
-	MaxDescriptionLen = 200
 )
 
 // Type is a milestone type, used in milestone templates.
@@ -71,7 +65,7 @@ func (s *Service) CreateType(ctx context.Context, in TypeCreateParams) (Type, er
 	name := strings.TrimSpace(in.Name)
 	description := strings.TrimSpace(in.Description)
 
-	if err := checkType(name, description); err != nil {
+	if err := checkNaming(name, description); err != nil {
 		return Type{}, err
 	}
 
@@ -109,7 +103,7 @@ func (s *Service) UpdateType(ctx context.Context, typeID ids.ID, in TypeUpdatePa
 	name := strings.TrimSpace(in.Name)
 	description := strings.TrimSpace(in.Description)
 
-	if err := checkType(name, description); err != nil {
+	if err := checkNaming(name, description); err != nil {
 		return err
 	}
 
@@ -163,17 +157,4 @@ func (s *Service) UpdateType(ctx context.Context, typeID ids.ID, in TypeUpdatePa
 		return s.RecordTrail(ctx, changes...)
 	})
 	return err
-}
-
-// checkType states the rules both writes share: two fields the user fills in,
-// each within the length its screen holds.
-func checkType(name, description string) error {
-	var v validate.Validator
-	if v.Required(FieldName, name) {
-		v.MaxLen(FieldName, name, MaxNameLen)
-	}
-	if v.Required(FieldDescription, description) {
-		v.MaxLen(FieldDescription, description, MaxDescriptionLen)
-	}
-	return v.Err()
 }

@@ -21,12 +21,18 @@ var actorID = ids.MustParse("01912345-6789-7abc-def0-123456789abc")
 
 // store is the in-memory stand-in for the ports of the package.
 type store struct {
-	types    map[ids.ID]Type
-	failWith error
+	types     map[ids.ID]Type
+	templates map[ids.ID]Template
+	items     map[ids.ID]TemplateItem
+	failWith  error
 }
 
 func newStore() *store {
-	return &store{types: make(map[ids.ID]Type)}
+	return &store{
+		types:     make(map[ids.ID]Type),
+		templates: make(map[ids.ID]Template),
+		items:     make(map[ids.ID]TemplateItem),
+	}
 }
 
 func (s *store) TypeByID(_ context.Context, id ids.ID) (Type, error) {
@@ -85,6 +91,139 @@ func (s *store) taken(in Type) bool {
 	return false
 }
 
+// ---------------------------------------------------------------- templates
+
+func (s *store) TemplateByID(_ context.Context, id ids.ID) (Template, error) {
+	if s.failWith != nil {
+		return Template{}, s.failWith
+	}
+	template, found := s.templates[id]
+	if !found {
+		return Template{}, ErrNoTemplate
+	}
+	return template, nil
+}
+
+func (s *store) TemplateList(context.Context) ([]Template, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+	templates := slices.Collect(maps.Values(s.templates))
+	slices.SortFunc(templates, func(a, b Template) int { return strings.Compare(a.Name, b.Name) })
+	return templates, nil
+}
+
+func (s *store) TemplateCreate(_ context.Context, in Template) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	if s.templateTaken(in) {
+		return ErrNameTaken
+	}
+	s.templates[in.ID] = in
+	return nil
+}
+
+func (s *store) TemplateUpdate(_ context.Context, in Template) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	if _, found := s.templates[in.ID]; !found {
+		return ErrNoTemplate
+	}
+	if s.templateTaken(in) {
+		return ErrNameTaken
+	}
+	s.templates[in.ID] = in
+	return nil
+}
+
+func (s *store) TemplateClearDefault(_ context.Context, keep ids.ID) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	for id, held := range s.templates {
+		if id != keep && held.Default {
+			held.Default = false
+			s.templates[id] = held
+		}
+	}
+	return nil
+}
+
+func (s *store) templateTaken(in Template) bool {
+	for _, held := range s.templates {
+		if held.ID != in.ID && strings.EqualFold(held.Name, in.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *store) ItemList(_ context.Context, templateID ids.ID) ([]TemplateItem, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+	var items []TemplateItem
+	for _, item := range s.items {
+		if item.TemplateID == templateID {
+			items = append(items, item)
+		}
+	}
+	slices.SortFunc(items, func(a, b TemplateItem) int { return a.Position - b.Position })
+	return items, nil
+}
+
+func (s *store) ItemAdd(_ context.Context, in TemplateItem) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	for _, held := range s.items {
+		if held.TemplateID == in.TemplateID && held.TypeID == in.TypeID {
+			return ErrTypeInTemplate
+		}
+	}
+	s.items[in.ID] = in
+	return nil
+}
+
+func (s *store) ItemUpdate(_ context.Context, in TemplateItem) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	if _, found := s.items[in.ID]; !found {
+		return ErrNoItem
+	}
+	s.items[in.ID] = in
+	return nil
+}
+
+func (s *store) ItemRemove(_ context.Context, itemID ids.ID) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	if _, found := s.items[itemID]; !found {
+		return ErrNoItem
+	}
+	delete(s.items, itemID)
+	return nil
+}
+
+func (s *store) ItemReorder(_ context.Context, ordered []ids.ID) error {
+	if s.failWith != nil {
+		return s.failWith
+	}
+	for position, itemID := range ordered {
+		item, found := s.items[itemID]
+		if !found {
+			return ErrNoItem
+		}
+		item.Position = position
+		s.items[itemID] = item
+	}
+	return nil
+}
+
 // The ports, each one a view of the same store.
 type typesOf struct{ *store }
 
@@ -92,6 +231,37 @@ func (t typesOf) ByID(ctx context.Context, id ids.ID) (Type, error) { return t.T
 func (t typesOf) List(ctx context.Context) ([]Type, error)          { return t.TypeList(ctx) }
 func (t typesOf) Create(ctx context.Context, in Type) error         { return t.TypeCreate(ctx, in) }
 func (t typesOf) Update(ctx context.Context, in Type) error         { return t.TypeUpdate(ctx, in) }
+
+type templatesOf struct{ *store }
+
+func (t templatesOf) ByID(ctx context.Context, id ids.ID) (Template, error) {
+	return t.TemplateByID(ctx, id)
+}
+func (t templatesOf) List(ctx context.Context) ([]Template, error) { return t.TemplateList(ctx) }
+func (t templatesOf) Create(ctx context.Context, in Template) error {
+	return t.TemplateCreate(ctx, in)
+}
+func (t templatesOf) Update(ctx context.Context, in Template) error {
+	return t.TemplateUpdate(ctx, in)
+}
+func (t templatesOf) ClearDefault(ctx context.Context, keep ids.ID) error {
+	return t.TemplateClearDefault(ctx, keep)
+}
+func (t templatesOf) Items(ctx context.Context, templateID ids.ID) ([]TemplateItem, error) {
+	return t.ItemList(ctx, templateID)
+}
+func (t templatesOf) AddItem(ctx context.Context, in TemplateItem) error {
+	return t.ItemAdd(ctx, in)
+}
+func (t templatesOf) UpdateItem(ctx context.Context, in TemplateItem) error {
+	return t.ItemUpdate(ctx, in)
+}
+func (t templatesOf) RemoveItem(ctx context.Context, itemID ids.ID) error {
+	return t.ItemRemove(ctx, itemID)
+}
+func (t templatesOf) ReorderItems(ctx context.Context, ordered []ids.ID) error {
+	return t.ItemReorder(ctx, ordered)
+}
 
 // directAtomic runs the unit of work without a transaction. The domain tests do
 // not reach a database.
@@ -137,7 +307,7 @@ func newTestService(t *testing.T) (*Service, *store, *fakeRecorder) {
 	trail := audit.NewTrail(recorder, clk, ids.NewDeterministic(100))
 
 	rows := newStore()
-	stores := Store{Types: typesOf{rows}, Atomic: directAtomic{}}
+	stores := Store{Types: typesOf{rows}, Templates: templatesOf{rows}, Atomic: directAtomic{}}
 	return NewService(stores, ids.NewDeterministic(1), trail), rows, recorder
 }
 
@@ -156,6 +326,37 @@ func milestoneType(t *testing.T, svc *Service, ctx context.Context, short, descr
 		t.Fatalf("CreateType %q: %v", short, err)
 	}
 	return created
+}
+
+// milestoneTemplate writes one template and returns it.
+func milestoneTemplate(t *testing.T, svc *Service, ctx context.Context, name, description string) Template {
+	t.Helper()
+
+	created, err := svc.CreateTemplate(ctx, TemplateCreateParams{Name: name, Description: description})
+	if err != nil {
+		t.Fatalf("CreateTemplate %q: %v", name, err)
+	}
+	return created
+}
+
+// templateItem appends one step to a template and returns it.
+func templateItem(t *testing.T, svc *Service, ctx context.Context, templateID, typeID ids.ID, offset int) TemplateItem {
+	t.Helper()
+
+	created, err := svc.AddTemplateItem(ctx, templateID, typeID, offset)
+	if err != nil {
+		t.Fatalf("AddTemplateItem %d: %v", offset, err)
+	}
+	return created
+}
+
+// offsets is the offset of every item of a list, in order.
+func offsets(items []TemplateItem) []int {
+	out := make([]int, len(items))
+	for i, item := range items {
+		out[i] = item.Offset
+	}
+	return out
 }
 
 // rejects reports the code the error carries for field, and fails otherwise.
