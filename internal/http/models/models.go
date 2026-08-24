@@ -79,7 +79,7 @@ func ShowList(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
 //
 // The season control narrows the drops, and htmx asks for this same URL to
 // swap that one control.
-func ShowNew(catalogSvc *catalog.Service) http.HandlerFunc {
+func ShowNew(catalogSvc *catalog.Service, milestoneSvc *milestones.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -88,17 +88,28 @@ func ShowNew(catalogSvc *catalog.Service) http.HandlerFunc {
 			return
 		}
 
+		// The swap carries the drop control alone, so the critical path is read
+		// for the whole page and not for the fragment.
 		if middleware.IsFragment(ctx) {
 			shared.Render(w, r, http.StatusOK, views.ModelDropField(form))
 			return
 		}
+		templates, ok := offerTemplates(w, r, milestoneSvc, &form)
+		if !ok {
+			return
+		}
+		// The fresh form stands on the default path. A posted form keeps what
+		// the user picked, which is why the default is set here and not in
+		// offerTemplates.
+		form.TemplateID = defaultTemplate(templates)
 		shared.Render(w, r, http.StatusOK, views.NewModel(form))
 	}
 	return handler
 }
 
-// Create writes the model and opens the card of it.
-func Create(catalogSvc *catalog.Service) http.HandlerFunc {
+// Create writes the model, builds the calendar of it from the critical path the
+// user picked, and opens the card.
+func Create(catalogSvc *catalog.Service, milestoneSvc *milestones.Service) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		logger := logging.FromContext(ctx)
@@ -106,21 +117,39 @@ func Create(catalogSvc *catalog.Service) http.HandlerFunc {
 		form := submitted(r)
 		form.Chrome = shared.Chrome(ctx)
 
-		dropID, idErr := shared.PostedID(r, views.FieldModelDrop)
-		model, err := catalogSvc.CreateModel(ctx, catalog.ModelCreateParams{
-			DropID:  dropID,
-			Article: form.Article,
-		})
-		if errors.Is(err, catalog.ErrNoDrop) {
-			err = validate.Fail(views.FieldModelDrop, validate.NotAllowed)
+		// The critical path is read before the model is written, because the
+		// screen refuses a path it does not offer, and a refusal must leave no
+		// model behind.
+		if _, ok := offerTemplates(w, r, milestoneSvc, &form); !ok {
+			return
 		}
-		if err == nil && idErr == nil {
+		dropID, idErr := shared.PostedID(r, views.FieldModelDrop)
+		templateID, templateErr := shared.PostedID(r, views.FieldMilestoneTemplate)
+		if templateErr == nil && !offersTemplate(form, templateID) {
+			templateErr = validate.Fail(views.FieldMilestoneTemplate, validate.NotAllowed)
+		}
+
+		var model catalog.Model
+		err := errors.Join(idErr, templateErr)
+		if err == nil {
+			model, err = catalogSvc.CreateModel(ctx, catalog.ModelCreateParams{
+				DropID:  dropID,
+				Article: form.Article,
+			})
+			if errors.Is(err, catalog.ErrNoDrop) {
+				err = validate.Fail(views.FieldModelDrop, validate.NotAllowed)
+			}
+		}
+		if err == nil {
 			logger.Info("model created", "model", model.ID, "drop", model.DropID, "article", model.Article)
+			if !startCalendar(w, r, milestoneSvc, model.ID, templateID) {
+				return
+			}
 			shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
 			return
 		}
 
-		errs, ok := shared.Rejections(idErr, err)
+		errs, ok := shared.Rejections(idErr, templateErr, err)
 		if !ok {
 			logger.Error("creating a model failed unexpectedly", "err", err)
 			shared.WriteServerError(w)
@@ -136,6 +165,44 @@ func Create(catalogSvc *catalog.Service) http.HandlerFunc {
 		shared.Render(w, r, http.StatusUnprocessableEntity, views.NewModel(form))
 	}
 	return handler
+}
+
+// startCalendar builds the calendar of a new model from the critical path the
+// user picked. A model created with no path takes none, which is the choice the
+// control offers beside the paths.
+//
+// The model is already written here. A path that somebody retired since the
+// screen opened therefore leaves the card with an empty calendar section, and
+// that section holds the control which fixes it.
+//
+// It answers 500 itself and reports false when the calendar cannot be written.
+func startCalendar(
+	w http.ResponseWriter,
+	r *http.Request,
+	milestoneSvc *milestones.Service,
+	modelID, templateID ids.ID,
+) bool {
+	if templateID == ids.Nil {
+		return true
+	}
+	ctx := r.Context()
+	logger := logging.FromContext(ctx)
+
+	written, err := milestoneSvc.ApplyTemplate(ctx, modelID, templateID)
+	if err == nil {
+		logger.Info("calendar applied", "model", modelID, "template", templateID, "steps", len(written))
+		return true
+	}
+	if _, refused := shared.Rejections(err); refused {
+		logger.Info("the critical path of a new model is gone",
+			"model", modelID, "template", templateID, "err", err)
+		return true
+	}
+
+	logger.Error("building the calendar of a new model failed",
+		"model", modelID, "template", templateID, "err", err)
+	shared.WriteServerError(w)
+	return false
 }
 
 // Show renders the screen header of one model, and the audit trail of that
@@ -571,6 +638,54 @@ func offerDrops(w http.ResponseWriter, r *http.Request, catalogSvc *catalog.Serv
 	return true
 }
 
+// offerTemplates fills the critical path control of the create form with every
+// active path, the way the calendar section of the card fills its own.
+//
+// It answers 500 itself and reports false when the paths cannot be read.
+func offerTemplates(
+	w http.ResponseWriter,
+	r *http.Request,
+	milestoneSvc *milestones.Service,
+	form *views.ModelForm,
+) ([]milestones.Template, bool) {
+	ctx := r.Context()
+
+	templates, err := milestoneSvc.ListTemplates(ctx)
+	if err != nil {
+		logging.FromContext(ctx).Error("listing milestone templates failed", "err", err)
+		shared.WriteServerError(w)
+		return nil, false
+	}
+
+	form.Templates = templateChoices(templates)
+	return templates, true
+}
+
+// defaultTemplate is the critical path a new model starts on, and it is empty
+// while no path is the default or the default one is retired.
+func defaultTemplate(templates []milestones.Template) string {
+	for _, template := range templates {
+		if template.Active && template.Default {
+			return template.ID.String()
+		}
+	}
+	return ""
+}
+
+// offersTemplate reports whether the control holds the path the form posted.
+// The choice that builds no calendar posts nothing and is always there.
+func offersTemplate(form views.ModelForm, templateID ids.ID) bool {
+	if templateID == ids.Nil {
+		return true
+	}
+	for _, choice := range form.Templates {
+		if choice.Value == templateID.String() {
+			return true
+		}
+	}
+	return false
+}
+
 // holdsDrop reports whether any season holds an active drop.
 func holdsDrop(groups []dropviews.DropGroup) bool {
 	for _, group := range groups {
@@ -617,9 +732,10 @@ func submittedFilter(r *http.Request, groups []dropviews.DropGroup) views.ModelF
 // values: this only carries them.
 func submitted(r *http.Request) views.ModelForm {
 	form := views.ModelForm{
-		SeasonID: r.PostFormValue(views.FieldModelSeason),
-		DropID:   r.PostFormValue(views.FieldModelDrop),
-		Article:  r.PostFormValue(views.FieldModelArticle),
+		SeasonID:   r.PostFormValue(views.FieldModelSeason),
+		DropID:     r.PostFormValue(views.FieldModelDrop),
+		Article:    r.PostFormValue(views.FieldModelArticle),
+		TemplateID: r.PostFormValue(views.FieldMilestoneTemplate),
 	}
 	return form
 }
