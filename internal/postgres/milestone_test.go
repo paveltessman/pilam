@@ -6,18 +6,20 @@ import (
 	"testing"
 
 	"github.com/paveltessman/pilam/internal/milestones"
+	"github.com/paveltessman/pilam/internal/platform/ids"
 )
 
 // milestoneRepos is the port of the milestone package over one database.
 type milestoneRepos struct {
-	db    *DB
-	types *MilestoneTypes
+	db        *DB
+	types     *MilestoneTypes
+	templates *MilestoneTemplates
 }
 
 func milestoneDB(t *testing.T) milestoneRepos {
 	t.Helper()
 	db := openTestDB(t)
-	return milestoneRepos{db: db, types: NewMilestoneTypes(db)}
+	return milestoneRepos{db: db, types: NewMilestoneTypes(db), templates: NewMilestoneTemplates(db)}
 }
 
 // milestoneType writes one type and returns it.
@@ -27,6 +29,34 @@ func (r milestoneRepos) milestoneType(t *testing.T, name, description string) mi
 	created := milestones.Type{ID: gen.New(), Name: name, Description: description, Active: true}
 	if err := r.types.Create(t.Context(), created); err != nil {
 		t.Fatalf("MilestoneTypes.Create: %v", err)
+	}
+	return created
+}
+
+// template writes one template and returns it.
+func (r milestoneRepos) template(t *testing.T, name, description string) milestones.Template {
+	t.Helper()
+
+	created := milestones.Template{ID: gen.New(), Name: name, Description: description, Active: true}
+	if err := r.templates.Create(t.Context(), created); err != nil {
+		t.Fatalf("MilestoneTemplates.Create: %v", err)
+	}
+	return created
+}
+
+// item appends one step to a template and returns it.
+func (r milestoneRepos) item(t *testing.T, templateID, typeID ids.ID, offset, position int) milestones.TemplateItem {
+	t.Helper()
+
+	created := milestones.TemplateItem{
+		ID:         gen.New(),
+		TemplateID: templateID,
+		TypeID:     typeID,
+		Offset:     offset,
+		Position:   position,
+	}
+	if err := r.templates.AddItem(t.Context(), created); err != nil {
+		t.Fatalf("MilestoneTemplates.AddItem: %v", err)
 	}
 	return created
 }
