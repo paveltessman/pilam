@@ -97,6 +97,8 @@ func articles(models []catalog.Model) []string {
 }
 
 func TestCatalogWriteRollsBackWithTransaction(t *testing.T) {
+	t.Parallel()
+
 	store := catalogDB(t)
 	season := store.season(t, "S1", "2026-11-01")
 

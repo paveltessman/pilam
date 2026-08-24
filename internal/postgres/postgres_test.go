@@ -52,6 +52,8 @@ func notes(t *testing.T, db *DB) []string {
 }
 
 func TestOpenRejectsAnUnreachableServer(t *testing.T) {
+	t.Parallel()
+
 	// pgxpool keeps retrying a refused connection until the context runs out,
 	// so a bad address costs Open its whole connect timeout. Deadline of the
 	// caller's own context is the shorter of the two; the test uses that rather
@@ -66,6 +68,8 @@ func TestOpenRejectsAnUnreachableServer(t *testing.T) {
 }
 
 func TestPing(t *testing.T) {
+	t.Parallel()
+
 	db := openTestDB(t)
 	if err := db.Ping(t.Context()); err != nil {
 		t.Errorf("Ping: %v", err)
@@ -73,6 +77,8 @@ func TestPing(t *testing.T) {
 }
 
 func TestInTxCommitsWhenTheFunctionReturnsNil(t *testing.T) {
+	t.Parallel()
+
 	db := scratchDB(t)
 
 	err := db.InTx(t.Context(), func(ctx context.Context) error {
@@ -91,6 +97,8 @@ func TestInTxCommitsWhenTheFunctionReturnsNil(t *testing.T) {
 // The audit trail depends on this: a write and the entry describing it either
 // both land or neither does.
 func TestInTxRollsBackWhenTheFunctionFails(t *testing.T) {
+	t.Parallel()
+
 	db := scratchDB(t)
 
 	sentinel := errors.New("the second write failed")
@@ -110,6 +118,8 @@ func TestInTxRollsBackWhenTheFunctionFails(t *testing.T) {
 }
 
 func TestInTxRollsBackWhenTheFunctionPanics(t *testing.T) {
+	t.Parallel()
+
 	db := scratchDB(t)
 
 	func() {
@@ -135,6 +145,8 @@ func TestInTxRollsBackWhenTheFunctionPanics(t *testing.T) {
 // rollback has to happen anyway. Without it the write would sit on the
 // connection until the server noticed the client had gone.
 func TestInTxRollsBackWhenTheContextIsCancelled(t *testing.T) {
+	t.Parallel()
+
 	db := scratchDB(t)
 
 	outer, cancel := context.WithCancel(t.Context())
@@ -158,6 +170,8 @@ func TestInTxRollsBackWhenTheContextIsCancelled(t *testing.T) {
 // audit entry written inside a user write would sit in a second transaction and
 // could land on its own.
 func TestInTxJoinsTheTransactionTheContextCarries(t *testing.T) {
+	t.Parallel()
+
 	db := scratchDB(t)
 
 	sentinel := errors.New("the outer work failed")

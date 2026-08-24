@@ -10,6 +10,8 @@ import (
 )
 
 func TestMilestoneTemplatesRoundTripEveryField(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	want := store.template(t, "Import, rail", "The rail chain")
 
@@ -23,6 +25,8 @@ func TestMilestoneTemplatesRoundTripEveryField(t *testing.T) {
 }
 
 func TestMilestoneTemplatesReportMissingRowAsErrNoTemplate(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 
 	if _, err := store.templates.ByID(t.Context(), gen.New()); !errors.Is(err, milestones.ErrNoTemplate) {
@@ -36,6 +40,8 @@ func TestMilestoneTemplatesReportMissingRowAsErrNoTemplate(t *testing.T) {
 }
 
 func TestMilestoneTemplatesRefuseTakenName(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	held := store.template(t, "Import, rail", "The rail chain")
 
@@ -59,6 +65,8 @@ func TestMilestoneTemplatesRefuseTakenName(t *testing.T) {
 }
 
 func TestMilestoneTemplatesHoldOneDefault(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	ctx := t.Context()
 
@@ -93,6 +101,8 @@ func TestMilestoneTemplatesHoldOneDefault(t *testing.T) {
 }
 
 func TestMilestoneTemplatesListHoldsBothStatesByName(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	store.template(t, "Import, rail", "The rail chain")
 	retired := store.template(t, "Domestic", "The domestic chain")
@@ -115,6 +125,8 @@ func TestMilestoneTemplatesListHoldsBothStatesByName(t *testing.T) {
 }
 
 func TestMilestoneTemplateItemsRoundTripInPositionOrder(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	ctx := t.Context()
 	template := store.template(t, "Import, rail", "The rail chain")
@@ -132,6 +144,8 @@ func TestMilestoneTemplateItemsRoundTripInPositionOrder(t *testing.T) {
 }
 
 func TestMilestoneTemplateItemsHoldOneTypePerTemplate(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	template := store.template(t, "Import, rail", "The rail chain")
 	milestoneType := store.milestoneType(t, "tech1", "Tech pack 1")
@@ -146,6 +160,8 @@ func TestMilestoneTemplateItemsHoldOneTypePerTemplate(t *testing.T) {
 }
 
 func TestMilestoneTemplateItemsRefuseAPositiveOffset(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	template := store.template(t, "Import, rail", "The rail chain")
 
@@ -161,6 +177,8 @@ func TestMilestoneTemplateItemsRefuseAPositiveOffset(t *testing.T) {
 }
 
 func TestMilestoneTemplateItemsReorderSwapsTwoRows(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	ctx := t.Context()
 	template := store.template(t, "Import, rail", "The rail chain")
@@ -184,6 +202,8 @@ func TestMilestoneTemplateItemsReorderSwapsTwoRows(t *testing.T) {
 }
 
 func TestMilestoneTemplateItemRemoveReportsARowThatIsGone(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 
 	if err := store.templates.RemoveItem(t.Context(), gen.New()); !errors.Is(err, milestones.ErrNoItem) {
@@ -192,6 +212,8 @@ func TestMilestoneTemplateItemRemoveReportsARowThatIsGone(t *testing.T) {
 }
 
 func TestMilestoneTemplateItemUpdateWritesTheOffset(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	ctx := t.Context()
 	template := store.template(t, "Import, rail", "The rail chain")

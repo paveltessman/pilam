@@ -9,6 +9,8 @@ import (
 )
 
 func TestMilestoneTypesRoundTripEveryField(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	want := store.milestoneType(t, "fit", "Fitting")
 
@@ -23,6 +25,8 @@ func TestMilestoneTypesRoundTripEveryField(t *testing.T) {
 }
 
 func TestMilestoneTypesReportMissingRowAsErrNoType(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 
 	if _, err := store.types.ByID(t.Context(), gen.New()); !errors.Is(err, milestones.ErrNoType) {
@@ -36,6 +40,8 @@ func TestMilestoneTypesReportMissingRowAsErrNoType(t *testing.T) {
 }
 
 func TestMilestoneTypesRefusesTakenName(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	held := store.milestoneType(t, "fit", "Fitting")
 
@@ -59,6 +65,8 @@ func TestMilestoneTypesRefusesTakenName(t *testing.T) {
 }
 
 func TestMilestoneTypesRefusesTakenID(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	held := store.milestoneType(t, "fit", "Fitting")
 
@@ -69,6 +77,8 @@ func TestMilestoneTypesRefusesTakenID(t *testing.T) {
 }
 
 func TestMilestoneTypesUpdateWritesEveryField(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	want := store.milestoneType(t, "fit", "Fitting")
 
@@ -90,6 +100,8 @@ func TestMilestoneTypesUpdateWritesEveryField(t *testing.T) {
 }
 
 func TestMilestoneTypesListHoldsBothStatesByShortName(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 	store.milestoneType(t, "shoot", "Photo shoot")
 	retired := store.milestoneType(t, "fit", "Fitting")
@@ -113,6 +125,8 @@ func TestMilestoneTypesListHoldsBothStatesByShortName(t *testing.T) {
 }
 
 func TestMilestoneTypesListIsEmptyWithoutRows(t *testing.T) {
+	t.Parallel()
+
 	store := milestoneDB(t)
 
 	got, err := store.types.List(t.Context())
