@@ -387,10 +387,21 @@ func TestRunRefusesDependenciesItCantWorkWithout(t *testing.T) {
 	whole, _, _, _ := newTestDeps(t)
 
 	cases := map[string]Deps{
-		"no auth service":    {Catalog: whole.Catalog, Media: whole.Media, Clock: whole.Clock},
-		"no catalog service": {Auth: whole.Auth, Media: whole.Media, Clock: whole.Clock},
-		"no media store":     {Auth: whole.Auth, Catalog: whole.Catalog, Clock: whole.Clock},
-		"no clock":           {Auth: whole.Auth, Catalog: whole.Catalog, Media: whole.Media},
+		"no auth service": {
+			Catalog: whole.Catalog, Milestones: whole.Milestones, Media: whole.Media, Clock: whole.Clock,
+		},
+		"no catalog service": {
+			Auth: whole.Auth, Milestones: whole.Milestones, Media: whole.Media, Clock: whole.Clock,
+		},
+		"no milestones service": {
+			Auth: whole.Auth, Catalog: whole.Catalog, Media: whole.Media, Clock: whole.Clock,
+		},
+		"no media store": {
+			Auth: whole.Auth, Catalog: whole.Catalog, Milestones: whole.Milestones, Clock: whole.Clock,
+		},
+		"no clock": {
+			Auth: whole.Auth, Catalog: whole.Catalog, Milestones: whole.Milestones, Media: whole.Media,
+		},
 	}
 
 	for name, deps := range cases {

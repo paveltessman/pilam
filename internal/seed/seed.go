@@ -16,6 +16,7 @@ import (
 
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/media"
 	"github.com/paveltessman/pilam/internal/platform/password"
@@ -30,10 +31,11 @@ const IDSeed uint64 = 2027
 
 // Deps is what the seed writes through.
 type Deps struct {
-	Auth    *auth.Service
-	Catalog *catalog.Service
-	Media   media.Store
-	Clock   clock.Clock
+	Auth       *auth.Service
+	Catalog    *catalog.Service
+	Milestones *milestones.Service
+	Media      media.Store
+	Clock      clock.Clock
 }
 
 // check refuses a dependency the seed can't work without.
@@ -43,6 +45,8 @@ func (d Deps) check() error {
 		return errors.New("seed: nil auth service")
 	case d.Catalog == nil:
 		return errors.New("seed: nil catalog service")
+	case d.Milestones == nil:
+		return errors.New("seed: nil milestones service")
 	case d.Media == nil:
 		return errors.New("seed: nil media store")
 	case d.Clock == nil:
@@ -106,8 +110,9 @@ func (o Options) check() error {
 
 // Report is what one run wrote.
 type Report struct {
-	Users   UsersReport
-	Catalog CatalogReport
+	Users      UsersReport
+	Catalog    CatalogReport
+	Milestones MilestonesReport
 }
 
 // Run loads the whole demo dataset. It is safe to run twice: a row that is
@@ -129,10 +134,15 @@ func Run(ctx context.Context, deps Deps, opts Options) (Report, error) {
 		return Report{}, err
 	}
 
-	rows, err := seedCatalog(ctx, deps, opts)
+	rows, drops, err := seedCatalog(ctx, deps, opts)
 	if err != nil {
 		return Report{}, err
 	}
 
-	return Report{Users: users, Catalog: rows}, nil
+	calendar, err := seedMilestones(ctx, deps, drops)
+	if err != nil {
+		return Report{}, err
+	}
+
+	return Report{Users: users, Catalog: rows, Milestones: calendar}, nil
 }

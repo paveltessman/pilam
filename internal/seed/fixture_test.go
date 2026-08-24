@@ -11,6 +11,7 @@ import (
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/date"
@@ -96,6 +97,7 @@ func newTestDeps(t *testing.T) (Deps, *fakeUsers, *catalogStore, *fakeRecorder) 
 	clk := clock.Fixed(time.Date(2026, 8, 19, 9, 0, 0, 0, time.UTC), time.UTC)
 	users := newFakeUsers()
 	rows := newCatalogStore()
+	calendar := newMilestoneStore(rows)
 	recorder := &fakeRecorder{}
 	idGen := ids.NewDeterministic(IDSeed)
 	trail := audit.NewTrail(recorder, clk, ids.NewDeterministic(IDSeed))
@@ -116,6 +118,12 @@ func newTestDeps(t *testing.T) (Deps, *fakeUsers, *catalogStore, *fakeRecorder) 
 			Photos:  photosOf{rows},
 			Atomic:  directAtomic{},
 		}, idGen, trail),
+		Milestones: milestones.NewService(milestones.Store{
+			Types:      typesOf{calendar},
+			Templates:  templatesOf{calendar},
+			Milestones: calendarOf{calendar},
+			Atomic:     directAtomic{},
+		}, idGen, clk, trail),
 	}
 	return deps, users, rows, recorder
 }
@@ -248,7 +256,14 @@ func (c *catalogStore) ModelList(_ context.Context, filter catalog.ModelListPara
 		}
 		models = append(models, model)
 	}
-	slices.SortFunc(models, func(a, b catalog.Model) int { return strings.Compare(a.Article, b.Article) })
+	// The table orders by the article and breaks the tie on the identifier, and
+	// the seed reads the models of a drop back in that order.
+	slices.SortFunc(models, func(a, b catalog.Model) int {
+		if a.Article != b.Article {
+			return strings.Compare(a.Article, b.Article)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
 	return models, nil
 }
 
@@ -360,3 +375,293 @@ func (p photosOf) Thumbnails(ctx context.Context, of []ids.ID) (map[ids.ID]catal
 func (p photosOf) Add(ctx context.Context, in catalog.Photo) error { return p.PhotoAdd(ctx, in) }
 func (p photosOf) Remove(ctx context.Context, id ids.ID) error     { return p.PhotoRemove(ctx, id) }
 func (p photosOf) Reorder(ctx context.Context, o []ids.ID) error   { return p.PhotoReorder(ctx, o) }
+
+// ---------------------------------------------------------------- milestones
+
+// milestoneStore is the in-memory stand-in for the three milestone ports. It
+// holds the rules the seed depends on: a name is taken once, one type appears
+// once per template, and a model holds one milestone per type.
+//
+// It reads the catalog rows the run wrote, because the target date a calendar
+// is reckoned from belongs to the drop of the model.
+type milestoneStore struct {
+	types       map[ids.ID]milestones.Type
+	templates   map[ids.ID]milestones.Template
+	items       map[ids.ID]milestones.TemplateItem
+	rows        map[ids.ID]milestones.Milestone
+	catalogRows *catalogStore
+}
+
+func newMilestoneStore(rows *catalogStore) *milestoneStore {
+	return &milestoneStore{
+		types:       make(map[ids.ID]milestones.Type),
+		templates:   make(map[ids.ID]milestones.Template),
+		items:       make(map[ids.ID]milestones.TemplateItem),
+		rows:        make(map[ids.ID]milestones.Milestone),
+		catalogRows: rows,
+	}
+}
+
+func (m *milestoneStore) TypeByID(_ context.Context, id ids.ID) (milestones.Type, error) {
+	one, found := m.types[id]
+	if !found {
+		return milestones.Type{}, milestones.ErrNoType
+	}
+	return one, nil
+}
+
+func (m *milestoneStore) TypeList(context.Context) ([]milestones.Type, error) {
+	types := slices.Collect(maps.Values(m.types))
+	slices.SortFunc(types, func(a, b milestones.Type) int { return strings.Compare(a.Name, b.Name) })
+	return types, nil
+}
+
+func (m *milestoneStore) TypeCreate(_ context.Context, in milestones.Type) error {
+	if m.typeNameTaken(in) {
+		return milestones.ErrNameTaken
+	}
+	m.types[in.ID] = in
+	return nil
+}
+
+func (m *milestoneStore) TypeUpdate(_ context.Context, in milestones.Type) error {
+	if _, found := m.types[in.ID]; !found {
+		return milestones.ErrNoType
+	}
+	if m.typeNameTaken(in) {
+		return milestones.ErrNameTaken
+	}
+	m.types[in.ID] = in
+	return nil
+}
+
+// typeNameTaken reports whether another row already holds the short name,
+// whatever the case. It is the unique index of the migration.
+func (m *milestoneStore) typeNameTaken(in milestones.Type) bool {
+	for _, held := range m.types {
+		if held.ID != in.ID && strings.EqualFold(held.Name, in.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *milestoneStore) TemplateByID(_ context.Context, id ids.ID) (milestones.Template, error) {
+	template, found := m.templates[id]
+	if !found {
+		return milestones.Template{}, milestones.ErrNoTemplate
+	}
+	return template, nil
+}
+
+func (m *milestoneStore) TemplateList(context.Context) ([]milestones.Template, error) {
+	templates := slices.Collect(maps.Values(m.templates))
+	slices.SortFunc(templates, func(a, b milestones.Template) int { return strings.Compare(a.Name, b.Name) })
+	return templates, nil
+}
+
+func (m *milestoneStore) TemplateCreate(_ context.Context, in milestones.Template) error {
+	if m.templateNameTaken(in) {
+		return milestones.ErrNameTaken
+	}
+	m.templates[in.ID] = in
+	return nil
+}
+
+func (m *milestoneStore) TemplateUpdate(_ context.Context, in milestones.Template) error {
+	if _, found := m.templates[in.ID]; !found {
+		return milestones.ErrNoTemplate
+	}
+	if m.templateNameTaken(in) {
+		return milestones.ErrNameTaken
+	}
+	m.templates[in.ID] = in
+	return nil
+}
+
+func (m *milestoneStore) TemplateClearDefault(_ context.Context, keep ids.ID) error {
+	for id, held := range m.templates {
+		if id != keep && held.Default {
+			held.Default = false
+			m.templates[id] = held
+		}
+	}
+	return nil
+}
+
+func (m *milestoneStore) templateNameTaken(in milestones.Template) bool {
+	for _, held := range m.templates {
+		if held.ID != in.ID && strings.EqualFold(held.Name, in.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *milestoneStore) ItemList(_ context.Context, templateID ids.ID) ([]milestones.TemplateItem, error) {
+	var items []milestones.TemplateItem
+	for _, item := range m.items {
+		if item.TemplateID == templateID {
+			items = append(items, item)
+		}
+	}
+	slices.SortFunc(items, func(a, b milestones.TemplateItem) int { return a.Position - b.Position })
+	return items, nil
+}
+
+func (m *milestoneStore) ItemAdd(_ context.Context, in milestones.TemplateItem) error {
+	for _, held := range m.items {
+		if held.TemplateID == in.TemplateID && held.TypeID == in.TypeID {
+			return milestones.ErrTypeInTemplate
+		}
+	}
+	m.items[in.ID] = in
+	return nil
+}
+
+func (m *milestoneStore) ItemUpdate(_ context.Context, in milestones.TemplateItem) error {
+	if _, found := m.items[in.ID]; !found {
+		return milestones.ErrNoItem
+	}
+	m.items[in.ID] = in
+	return nil
+}
+
+func (m *milestoneStore) ItemRemove(_ context.Context, itemID ids.ID) error {
+	if _, found := m.items[itemID]; !found {
+		return milestones.ErrNoItem
+	}
+	delete(m.items, itemID)
+	return nil
+}
+
+func (m *milestoneStore) ItemReorder(_ context.Context, ordered []ids.ID) error {
+	for position, itemID := range ordered {
+		item, found := m.items[itemID]
+		if !found {
+			return milestones.ErrNoItem
+		}
+		item.Position = position
+		m.items[itemID] = item
+	}
+	return nil
+}
+
+func (m *milestoneStore) MilestoneByID(_ context.Context, id ids.ID) (milestones.Milestone, error) {
+	one, found := m.rows[id]
+	if !found {
+		return milestones.Milestone{}, milestones.ErrNoMilestone
+	}
+	return one, nil
+}
+
+func (m *milestoneStore) MilestoneByModel(_ context.Context, modelID ids.ID) ([]milestones.Milestone, error) {
+	var calendar []milestones.Milestone
+	for _, held := range m.rows {
+		if held.ModelID == modelID {
+			calendar = append(calendar, held)
+		}
+	}
+	slices.SortFunc(calendar, func(a, b milestones.Milestone) int {
+		if !date.Equal(a.Plan, b.Plan) {
+			return a.Plan.Compare(b.Plan)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
+	return calendar, nil
+}
+
+func (m *milestoneStore) MilestoneCreate(_ context.Context, in ...milestones.Milestone) error {
+	for _, one := range in {
+		for _, held := range m.rows {
+			if held.ModelID == one.ModelID && held.TypeID == one.TypeID {
+				return milestones.ErrTypeOnModel
+			}
+		}
+		m.rows[one.ID] = one
+	}
+	return nil
+}
+
+func (m *milestoneStore) MilestoneUpdate(_ context.Context, in milestones.Milestone) error {
+	if _, found := m.rows[in.ID]; !found {
+		return milestones.ErrNoMilestone
+	}
+	m.rows[in.ID] = in
+	return nil
+}
+
+func (m *milestoneStore) MilestoneTarget(_ context.Context, modelID ids.ID) (time.Time, error) {
+	model, found := m.catalogRows.models[modelID]
+	if !found {
+		return time.Time{}, milestones.ErrNoModel
+	}
+	drop, found := m.catalogRows.drops[model.DropID]
+	if !found {
+		return time.Time{}, milestones.ErrNoModel
+	}
+	return drop.TargetDate, nil
+}
+
+// The three milestone ports, each one a view of the same store.
+type (
+	typesOf     struct{ *milestoneStore }
+	templatesOf struct{ *milestoneStore }
+	calendarOf  struct{ *milestoneStore }
+)
+
+func (t typesOf) ByID(ctx context.Context, id ids.ID) (milestones.Type, error) {
+	return t.TypeByID(ctx, id)
+}
+func (t typesOf) List(ctx context.Context) ([]milestones.Type, error) { return t.TypeList(ctx) }
+func (t typesOf) Create(ctx context.Context, in milestones.Type) error {
+	return t.TypeCreate(ctx, in)
+}
+func (t typesOf) Update(ctx context.Context, in milestones.Type) error {
+	return t.TypeUpdate(ctx, in)
+}
+
+func (t templatesOf) ByID(ctx context.Context, id ids.ID) (milestones.Template, error) {
+	return t.TemplateByID(ctx, id)
+}
+func (t templatesOf) List(ctx context.Context) ([]milestones.Template, error) {
+	return t.TemplateList(ctx)
+}
+func (t templatesOf) Create(ctx context.Context, in milestones.Template) error {
+	return t.TemplateCreate(ctx, in)
+}
+func (t templatesOf) Update(ctx context.Context, in milestones.Template) error {
+	return t.TemplateUpdate(ctx, in)
+}
+func (t templatesOf) ClearDefault(ctx context.Context, keep ids.ID) error {
+	return t.TemplateClearDefault(ctx, keep)
+}
+func (t templatesOf) Items(ctx context.Context, id ids.ID) ([]milestones.TemplateItem, error) {
+	return t.ItemList(ctx, id)
+}
+func (t templatesOf) AddItem(ctx context.Context, in milestones.TemplateItem) error {
+	return t.ItemAdd(ctx, in)
+}
+func (t templatesOf) UpdateItem(ctx context.Context, in milestones.TemplateItem) error {
+	return t.ItemUpdate(ctx, in)
+}
+func (t templatesOf) RemoveItem(ctx context.Context, id ids.ID) error { return t.ItemRemove(ctx, id) }
+func (t templatesOf) ReorderItems(ctx context.Context, o []ids.ID) error {
+	return t.ItemReorder(ctx, o)
+}
+
+func (c calendarOf) ByID(ctx context.Context, id ids.ID) (milestones.Milestone, error) {
+	return c.MilestoneByID(ctx, id)
+}
+func (c calendarOf) ByModel(ctx context.Context, id ids.ID) ([]milestones.Milestone, error) {
+	return c.MilestoneByModel(ctx, id)
+}
+func (c calendarOf) Create(ctx context.Context, in ...milestones.Milestone) error {
+	return c.MilestoneCreate(ctx, in...)
+}
+func (c calendarOf) Update(ctx context.Context, in milestones.Milestone) error {
+	return c.MilestoneUpdate(ctx, in)
+}
+func (c calendarOf) Target(ctx context.Context, id ids.ID) (time.Time, error) {
+	return c.MilestoneTarget(ctx, id)
+}
