@@ -10,6 +10,7 @@ import (
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
 	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/clock"
 	"github.com/paveltessman/pilam/internal/platform/config"
 	"github.com/paveltessman/pilam/internal/platform/ids"
@@ -24,6 +25,9 @@ import (
 const (
 	seedCount  = "3"
 	modelCount = "6"
+
+	// wantSteps is how many steps the seeded critical path holds.
+	wantSteps = 15
 )
 
 // loadSeed runs the seed command and returns the report it printed.
@@ -206,6 +210,48 @@ func TestSeedWritesTheCatalog(t *testing.T) {
 	}
 }
 
+func TestSeedWritesTheCalendars(t *testing.T) {
+	cfg := userDB(t)
+
+	report, err := loadSeed(t, cfg, "-users", seedCount, "-models", modelCount)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if !strings.Contains(report, "calendars: "+modelCount+" created") {
+		t.Errorf("The report names no calendar:\n%s", report)
+	}
+
+	svc := milestonesOf(t, cfg)
+	ctx := t.Context()
+
+	types, err := svc.ListTypes(ctx)
+	if err != nil {
+		t.Fatalf("ListTypes: %v", err)
+	}
+	if len(types) != wantSteps {
+		t.Fatalf("The database holds %d milestone types, want %d", len(types), wantSteps)
+	}
+
+	stamped := 0
+	for _, model := range listModels(t, cfg) {
+		calendar, err := svc.Calendar(ctx, model.ID)
+		if err != nil {
+			t.Fatalf("Calendar: %v", err)
+		}
+		if len(calendar) != wantSteps {
+			t.Errorf("Model %s holds %d milestones, want %d", model.Article, len(calendar), wantSteps)
+		}
+		for _, row := range calendar {
+			if row.Done() {
+				stamped++
+			}
+		}
+	}
+	if stamped == 0 {
+		t.Error("No seeded model ran through a step of its calendar")
+	}
+}
+
 // catalogOf opens the catalog service over the test database.
 func catalogOf(t *testing.T, cfg config.Config) *catalog.Service {
 	t.Helper()
@@ -225,6 +271,27 @@ func catalogOf(t *testing.T, cfg config.Config) *catalog.Service {
 		Photos:  postgres.NewPhotos(db),
 		Atomic:  db,
 	}, idGen, trail)
+}
+
+// milestonesOf opens the milestone service over the test database.
+func milestonesOf(t *testing.T, cfg config.Config) *milestones.Service {
+	t.Helper()
+
+	db, err := postgres.Open(t.Context(), cfg.Database)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	clk := clock.New(time.UTC)
+	idGen := ids.NewDeterministic(seed.IDSeed)
+	trail := audit.NewTrail(postgres.NewAudit(db), clk, idGen)
+	return milestones.NewService(milestones.Store{
+		Types:      postgres.NewMilestoneTypes(db),
+		Templates:  postgres.NewMilestoneTemplates(db),
+		Milestones: postgres.NewMilestones(db),
+		Atomic:     db,
+	}, idGen, clk, trail)
 }
 
 // listModels returns every model in the database, ordered by article.

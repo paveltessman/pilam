@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/milestones"
+	"github.com/paveltessman/pilam/internal/platform/date"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 )
 
@@ -55,24 +58,41 @@ type MilestonesReport struct {
 
 	// Steps counts the items of the template.
 	Steps Counts
+
+	// Calendars counts the models the template was applied to.
+	Calendars Counts
+
+	// Facts counts the steps this run stamped a fact date on.
+	Facts int
 }
 
 // milestoneRun is one pass over the milestone part of the dataset.
 type milestoneRun struct {
-	deps   Deps
+	deps  Deps
+	today time.Time
+
+	// templateID is the demo template every calendar is built from.
+	templateID ids.ID
+
 	report MilestonesReport
 }
 
-// seedMilestones writes the milestone types of the critical path and the
-// template that orders them.
-func seedMilestones(ctx context.Context, deps Deps) (MilestonesReport, error) {
-	run := &milestoneRun{deps: deps}
+// seedMilestones writes the milestone types of the critical path, the template
+// that orders them, and the calendar of every model of the drops given.
+func seedMilestones(ctx context.Context, deps Deps, drops []catalog.Drop) (MilestonesReport, error) {
+	run := &milestoneRun{deps: deps, today: deps.Clock.Today()}
 
 	types, err := run.types(ctx)
 	if err != nil {
 		return run.report, err
 	}
-	if _, err := run.template(ctx, types); err != nil {
+	template, err := run.template(ctx, types)
+	if err != nil {
+		return run.report, err
+	}
+	run.templateID = template.ID
+
+	if err := run.calendars(ctx, drops); err != nil {
 		return run.report, err
 	}
 	return run.report, nil
@@ -176,4 +196,149 @@ func (r *milestoneRun) namedTemplate(ctx context.Context) (milestones.Template, 
 	}
 	r.report.Templates.Created++
 	return template, nil
+}
+
+// ---------------------------------------------------------------- calendars
+
+// late is one model that runs behind: where it sits in its drop, and how many
+// of its past steps hold no fact date.
+type late struct {
+	at   int
+	open int
+}
+
+// lateAt names the models that run late, per drop of the plan.
+//
+// A step reads as late once its plan date has passed with no fact date on it, so
+// only the drops that go on sale first hold a model that can be late at all. The
+// spread is uneven on purpose: the milestone list has to open on a handful of
+// rows across the season, not on one row per drop.
+var lateAt = [][]late{
+	{{2, 1}, {5, 2}, {11, 1}, {18, 3}, {27, 1}, {34, 2}, {41, 1}},
+	{{7, 1}, {23, 1}, {38, 1}},
+	{},
+}
+
+// jitter is the days a step landed away from the day the calendar promised. The
+// model and the step pick one, so a seeded season holds steps that ran early,
+// steps that landed on the day, and steps that ran late.
+var jitter = []int{0, -1, 3, 0, 7, -2, 0, 14, 1, 0, -3, 5}
+
+// reasons is what somebody wrote in the note when a plan date moved.
+var reasons = []string{
+	"Фабрика сдвинула сроки: линия занята другим заказом.",
+	"Ткань пришла на фабрику позже плана.",
+	"Замечания по посадке, потребовался повторный образец.",
+	"Ждали утверждение цвета от дизайнера.",
+	"Фабрика закрывалась на национальные праздники.",
+}
+
+// calendars writes the calendar of every model of every drop, and stamps the
+// facts a real season would already hold.
+//
+// drops arrives in plan order, which is the order lateAt names the drops in.
+func (r *milestoneRun) calendars(ctx context.Context, drops []catalog.Drop) error {
+	for i, drop := range drops {
+		models, err := r.deps.Catalog.ListModels(ctx, catalog.ModelListParams{DropID: drop.ID})
+		if err != nil {
+			return err
+		}
+		for index, model := range models {
+			if err := r.calendar(ctx, model, index, openSteps(i, index)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// openSteps is how many of the past steps of one model hold no fact date. It is
+// zero for every model that is not on the late list.
+func openSteps(dropAt, index int) int {
+	if dropAt >= len(lateAt) {
+		return 0
+	}
+	for _, one := range lateAt[dropAt] {
+		if one.at == index {
+			return one.open
+		}
+	}
+	return 0
+}
+
+// calendar applies the template to one model and stamps what the model already
+// lived through. index is where the model sits in its drop.
+//
+// A model that already holds a calendar takes nothing: an earlier run wrote it,
+// with the facts that went with it.
+func (r *milestoneRun) calendar(ctx context.Context, model catalog.Model, index, open int) error {
+	written, err := r.deps.Milestones.ApplyTemplate(ctx, model.ID, r.templateID)
+	if err != nil {
+		return fmt.Errorf("seed: building the calendar of model %s: %w", model.Article, err)
+	}
+	if len(written) == 0 {
+		r.report.Calendars.Skipped++
+		return nil
+	}
+	r.report.Calendars.Created++
+
+	return r.facts(ctx, model, written, index, open)
+}
+
+// facts stamps the steps of one calendar that a season already ran through:
+// every step whose plan date has passed, less the open ones a late model
+// carries at the end of that run.
+//
+// written arrives in path order, which is plan date order, because the offsets
+// of the template run forwards.
+func (r *milestoneRun) facts(
+	ctx context.Context,
+	model catalog.Model,
+	written []milestones.Milestone,
+	index, open int,
+) error {
+	var past []milestones.Milestone
+	for _, one := range written {
+		if date.Before(one.Plan, r.today) {
+			past = append(past, one)
+		}
+	}
+
+	done := max(len(past)-open, 0)
+	for step, one := range past[:done] {
+		fact := r.landedOn(one, index+step)
+
+		// A step that ran late moved the plan date to the day it really
+		// happened, and somebody wrote why. A step that landed on the day or
+		// ran early kept the date the calendar promised.
+		plan, note := one.Baseline, ""
+		if date.After(fact, one.Baseline) {
+			plan = fact
+			note = reasons[(index+step)%len(reasons)]
+		}
+
+		err := r.deps.Milestones.UpdateMilestone(ctx, one.ID, milestones.MilestoneUpdateParams{
+			Plan:   plan,
+			Fact:   fact,
+			Note:   note,
+			Active: true,
+		})
+		if err != nil {
+			return fmt.Errorf("seed: stamping a step of model %s: %w", model.Article, err)
+		}
+		r.report.Facts++
+	}
+	return nil
+}
+
+// landedOn is the day one step really happened: the day the calendar promised,
+// moved by the jitter the model and the step pick.
+//
+// A fact date is never later than today, because the app refuses one.
+func (r *milestoneRun) landedOn(one milestones.Milestone, pick int) time.Time {
+	fact := date.AddDays(one.Baseline, jitter[pick%len(jitter)])
+	if date.After(fact, r.today) {
+		return r.today
+	}
+	return fact
 }

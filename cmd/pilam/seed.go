@@ -34,6 +34,8 @@ seed: milestones
   types:     %d created, %d already there
   templates: %d created, %d already there
   steps:     %d created, %d already there
+  calendars: %d created, %d already there
+  facts:     %d stamped
 
 Every seeded user logs in with that one password.
 `
@@ -110,6 +112,8 @@ func seedAll(ctx context.Context, cfg config.Config, out io.Writer, args []strin
 		calendar.Types.Created, calendar.Types.Skipped,
 		calendar.Templates.Created, calendar.Templates.Skipped,
 		calendar.Steps.Created, calendar.Steps.Skipped,
+		calendar.Calendars.Created, calendar.Calendars.Skipped,
+		calendar.Facts,
 	)
 	if err != nil {
 		return fmt.Errorf("seed: the dataset is loaded, but printing the report failed: %w", err)

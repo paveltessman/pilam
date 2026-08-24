@@ -134,12 +134,12 @@ func Run(ctx context.Context, deps Deps, opts Options) (Report, error) {
 		return Report{}, err
 	}
 
-	rows, err := seedCatalog(ctx, deps, opts)
+	rows, drops, err := seedCatalog(ctx, deps, opts)
 	if err != nil {
 		return Report{}, err
 	}
 
-	calendar, err := seedMilestones(ctx, deps)
+	calendar, err := seedMilestones(ctx, deps, drops)
 	if err != nil {
 		return Report{}, err
 	}

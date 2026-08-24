@@ -256,7 +256,14 @@ func (c *catalogStore) ModelList(_ context.Context, filter catalog.ModelListPara
 		}
 		models = append(models, model)
 	}
-	slices.SortFunc(models, func(a, b catalog.Model) int { return strings.Compare(a.Article, b.Article) })
+	// The table orders by the article and breaks the tie on the identifier, and
+	// the seed reads the models of a drop back in that order.
+	slices.SortFunc(models, func(a, b catalog.Model) int {
+		if a.Article != b.Article {
+			return strings.Compare(a.Article, b.Article)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
 	return models, nil
 }
 

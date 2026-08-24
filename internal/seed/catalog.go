@@ -173,8 +173,9 @@ type catalogRun struct {
 }
 
 // seedCatalog writes the season, its drops, models, and the placeholder
-// photos of the models.
-func seedCatalog(ctx context.Context, deps Deps, opts Options) (CatalogReport, error) {
+// photos of the models. It returns the drops of the season, in plan order,
+// because the calendars are written onto the models of those drops.
+func seedCatalog(ctx context.Context, deps Deps, opts Options) (CatalogReport, []catalog.Drop, error) {
 	limit := opts.Models
 	if limit == 0 {
 		limit = plannedModels()
@@ -189,16 +190,16 @@ func seedCatalog(ctx context.Context, deps Deps, opts Options) (CatalogReport, e
 
 	season, err := run.season(ctx)
 	if err != nil {
-		return run.report, err
+		return run.report, nil, err
 	}
 	drops, err := run.drops(ctx, season)
 	if err != nil {
-		return run.report, err
+		return run.report, nil, err
 	}
 	if err := run.models(ctx, drops); err != nil {
-		return run.report, err
+		return run.report, nil, err
 	}
-	return run.report, nil
+	return run.report, drops, nil
 }
 
 // season returns the demo season, and writes it when no run wrote it yet.
