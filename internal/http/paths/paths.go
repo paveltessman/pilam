@@ -35,6 +35,10 @@ const (
 	ModelTemplate   = ModelMilestones + "/template"
 	ModelMilestone  = ModelMilestones + "/{milestoneID}"
 
+	// The plan date of one step. It carries the steps after it, so it asks
+	// before it writes, and it posts on its own rather than with the row.
+	ModelMilestonePlan = ModelMilestone + "/plan"
+
 	Seasons   = "/seasons"
 	SeasonNew = Seasons + "/new"
 	Season    = Seasons + "/{id}"

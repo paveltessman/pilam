@@ -234,11 +234,9 @@ func AddMilestone(
 	return handler
 }
 
-// SaveMilestone writes one row of the calendar: the plan date, the fact date,
-// the note and the active flag.
-//
-// The row carries several buttons, and the one the user pressed says what to do
-// with the fact date and with the flag. The boxes of the row state the rest.
+// SaveMilestone writes one row of the calendar: the fact date, the note and the
+// active flag. The plan date is not on it, because a plan date carries the
+// steps after it. The plan date is moved by MovePlan.
 func SaveMilestone(
 	catalogSvc *catalog.Service,
 	milestoneSvc *milestones.Service,
@@ -259,17 +257,15 @@ func SaveMilestone(
 			return
 		}
 
-		plan, planErr := shared.PostedDay(r, views.FieldMilestonePlan)
 		fact, factErr := shared.PostedDay(r, views.FieldMilestoneFact)
 		in := milestones.MilestoneUpdateParams{
-			Plan:   plan,
 			Fact:   fact,
 			Note:   r.PostFormValue(views.FieldMilestoneNote),
 			Active: shared.PostedFlag(r, views.FieldMilestoneActive),
 		}
 		pressed(r, milestoneSvc.Today(), &in)
 
-		err := errors.Join(planErr, factErr)
+		err := factErr
 		if err == nil {
 			err = milestoneSvc.UpdateMilestone(ctx, milestoneID, in)
 		}
@@ -284,7 +280,7 @@ func SaveMilestone(
 			return
 		}
 
-		errs, ok := shared.Rejections(planErr, factErr, err)
+		errs, ok := shared.Rejections(factErr, err)
 		if !ok {
 			logger.Error("updating a milestone failed unexpectedly",
 				"model", model.ID, "milestone", milestoneID, "err", err)
@@ -296,6 +292,103 @@ func SaveMilestone(
 		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs)
 	}
 	return handler
+}
+
+// MovePlan moves the plan date of one step.
+//
+// A plan date that moves later carries the steps after it, so the screen shows
+// the rule before it writes: the first post answers with the panel that names
+// every step the move carries, and the panel posts back the confirmation.
+//
+// A date that carries nobody is written at once, because the panel asks about a
+// choice the user does not have.
+func MovePlan(
+	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		logger := logging.FromContext(ctx)
+
+		model, _, _, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		milestoneID, ok := milestoneOf(w, r)
+		if !ok {
+			return
+		}
+
+		plan, err := shared.PostedDay(r, views.FieldMilestonePlan)
+		shift := shared.PostedFlag(r, views.FieldMilestoneShift)
+
+		// The panel marks its own post. Everything else is the box of a row,
+		// and it gets the question rather than the write.
+		if err == nil && !shared.PostedFlag(r, views.FieldMilestoneConfirm) {
+			var moves []milestones.Move
+			moves, err = milestoneSvc.Moves(ctx, milestoneID, plan)
+			if err == nil && len(moves) > 1 {
+				logger.Info("the calendar asks about a plan date move",
+					"model", model.ID, "milestone", milestoneID, "steps", len(moves))
+				askMove(w, r, catalogSvc, milestoneSvc, authSvc, log, store, moves)
+				return
+			}
+			// One step or none: nothing follows it, so the switch says nothing.
+			shift = false
+		}
+
+		var moved []milestones.Move
+		if err == nil {
+			moved, err = milestoneSvc.MovePlan(ctx, milestoneID, plan, shift)
+		}
+		if errors.Is(err, milestones.ErrNoMilestone) {
+			logger.Info("no such milestone", "model", model.ID, "milestone", milestoneID)
+			http.NotFound(w, r)
+			return
+		}
+		if err == nil {
+			logger.Info("plan date moved",
+				"model", model.ID, "milestone", milestoneID, "steps", len(moved), "shift", shift)
+			shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
+			return
+		}
+
+		errs, ok := shared.Rejections(err)
+		if !ok {
+			logger.Error("moving a plan date failed unexpectedly",
+				"model", model.ID, "milestone", milestoneID, "err", err)
+			shared.WriteServerError(w)
+			return
+		}
+
+		logger.Info("plan date move refused", "model", model.ID, "milestone", milestoneID, "reason", errs)
+		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs)
+	}
+	return handler
+}
+
+// askMove renders the card with the panel that asks about the move. The card
+// comes back whole, with the calendar as it still stands, because the write
+// waits for the answer.
+func askMove(
+	w http.ResponseWriter,
+	r *http.Request,
+	catalogSvc *catalog.Service,
+	milestoneSvc *milestones.Service,
+	authSvc *auth.Service,
+	log *audit.Log,
+	store media.Store,
+	moves []milestones.Move,
+) {
+	card, ok := modelCard(w, r, catalogSvc, milestoneSvc, authSvc, log, store)
+	if !ok {
+		return
+	}
+	card.Calendar.Move = views.NewCalendarMove(card.Calendar, moves)
+	shared.Render(w, r, http.StatusOK, views.Model(card))
 }
 
 // pressed reads the button of the row the user pressed and writes what it means

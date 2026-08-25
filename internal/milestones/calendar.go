@@ -25,9 +25,9 @@ type CalendarRow struct {
 	State State
 }
 
+// MilestoneUpdateParams is what one row of the calendar edits. The plan date is
+// not on it: it is handled by MovePlan.
 type MilestoneUpdateParams struct {
-	Plan time.Time
-
 	// Fact is the day the step was done. The zero date clears a fact date.
 	Fact time.Time
 
@@ -215,14 +215,12 @@ func (s *Service) AddMilestone(ctx context.Context, modelID, typeID ids.ID, plan
 // UpdateMilestone writes the edited fields of one row and records one trail
 // entry per field that moved. It writes nothing when nothing moved.
 //
-// A plan date moves this one milestone. The baseline never moves here: it is
-// what the calendar promised, and only the drop shift moves it.
+// It moves no date of the calendar. The plan date goes through MovePlan.
 func (s *Service) UpdateMilestone(ctx context.Context, milestoneID ids.ID, in MilestoneUpdateParams) error {
-	plan, fact := zeroSafeDay(in.Plan), zeroSafeDay(in.Fact)
+	fact := zeroSafeDay(in.Fact)
 	note := strings.TrimSpace(in.Note)
 
 	var v validate.Validator
-	v.Check(!plan.IsZero(), FieldPlanDate, validate.Required)
 	v.Check(fact.IsZero() || !date.After(fact, s.clock.Today()), FieldFactDate, validate.NotAllowed)
 	v.MaxLen(FieldNote, note, MaxNoteLen)
 	if err := v.Err(); err != nil {
@@ -246,10 +244,6 @@ func (s *Service) UpdateMilestone(ctx context.Context, milestoneID ids.ID, in Mi
 		})
 	}
 
-	if !date.Equal(plan, milestone.Plan) {
-		record(audit.ActionChanged, FieldPlanDate, date.ISO(milestone.Plan), date.ISO(plan))
-		milestone.Plan = plan
-	}
 	if !sameDay(fact, milestone.Fact) {
 		record(factAction(milestone.Fact, fact), FieldFactDate, isoOrNone(milestone.Fact), isoOrNone(fact))
 		milestone.Fact = fact
@@ -274,6 +268,72 @@ func (s *Service) UpdateMilestone(ctx context.Context, milestoneID ids.ID, in Mi
 		return s.RecordTrail(ctx, changes...)
 	}
 	return s.atomic.InTx(ctx, write)
+}
+
+// Moves is what a plan date change would do: the row the user moved first, and
+// then every row the shift carries with it.
+//
+// It writes nothing. The screen reads it to show the rule before it writes.
+func (s *Service) Moves(ctx context.Context, milestoneID ids.ID, plan time.Time) ([]Move, error) {
+	if plan.IsZero() {
+		return nil, validate.Fail(FieldPlanDate, validate.Required)
+	}
+
+	moved, err := s.milestones.ByID(ctx, milestoneID)
+	if err != nil {
+		return nil, fmt.Errorf("milestone: loading milestone %s: %w", milestoneID, err)
+	}
+	held, err := s.milestones.ByModel(ctx, moved.ModelID)
+	if err != nil {
+		return nil, fmt.Errorf("milestone: listing the calendar of model %s: %w", moved.ModelID, err)
+	}
+	return Cascade(held, moved, plan), nil
+}
+
+// MovePlan writes the plan date of one milestone, and the plan dates of the
+// rows the shift carries with it.
+//
+// shift false writes the one row the user moved. The whole move runs in one
+// transaction, and the trail holds one entry per row it moved.
+//
+// It returns the rows it wrote, which is none for a date that does not move.
+func (s *Service) MovePlan(ctx context.Context, milestoneID ids.ID, plan time.Time, shift bool) ([]Move, error) {
+	var moves []Move
+	write := func(ctx context.Context) error {
+		found, err := s.Moves(ctx, milestoneID, plan)
+		if err != nil {
+			return err
+		}
+		if !shift && len(found) > 1 {
+			found = found[:1]
+		}
+		moves = found
+
+		changes := make([]audit.Change, len(moves))
+		for i, move := range moves {
+			one := move.Milestone
+			changes[i] = audit.Change{
+				Entity:   audit.EntityMilestone,
+				EntityID: one.ID,
+				Action:   audit.ActionChanged,
+				FieldKey: FieldPlanDate,
+				Old:      date.ISO(one.Plan),
+				New:      date.ISO(move.Plan),
+			}
+			one.Plan = move.Plan
+			if err := s.milestones.Update(ctx, one); err != nil {
+				return err
+			}
+		}
+		if len(changes) == 0 {
+			return nil
+		}
+		return s.RecordTrail(ctx, changes...)
+	}
+	if err := s.atomic.InTx(ctx, write); err != nil {
+		return nil, err
+	}
+	return moves, nil
 }
 
 // factAction names what happened to a fact date: it was stamped, it was

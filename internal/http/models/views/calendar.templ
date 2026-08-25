@@ -1,6 +1,7 @@
 package views
 
 import (
+	"slices"
 	"time"
 
 	"github.com/paveltessman/pilam/internal/http/paths"
@@ -26,6 +27,12 @@ const (
 	// FieldRowAction names the button of a row the user pressed. A plain save
 	// posts nothing under it.
 	FieldRowAction = "row_action"
+
+	// FieldMilestoneShift is the switch of the move panel, and
+	// FieldMilestoneConfirm marks the post that the panel itself makes. A plan
+	// date the user typed into a row carries neither of them.
+	FieldMilestoneShift   = "shift"
+	FieldMilestoneConfirm = "confirm"
 )
 
 // The buttons one row carries beside the plain save.
@@ -54,7 +61,14 @@ type ModelCalendar struct {
 	// Today bounds the fact date boxes, because nobody reports the future. It
 	// is the wire form of the current business day.
 	Today string
+
+	// Move is the panel that asks about a plan date before it moves it. It
+	// holds no row while the section writes nothing.
+	Move CalendarMove
 }
+
+// Asks reports whether the section stands on a question rather than on a write.
+func (c ModelCalendar) Asks() bool { return len(c.Move.Rows) > 0 }
 
 // TemplateAction is where the critical path control posts.
 func (c ModelCalendar) TemplateAction() string {
@@ -69,6 +83,12 @@ func (c ModelCalendar) AddAction() string {
 // RowAction is where one row posts.
 func (c ModelCalendar) RowAction(row CalendarRow) string {
 	return c.AddAction() + "/" + row.MilestoneID
+}
+
+// PlanAction is where the plan date of one step posts. The plan date carries
+// the steps after it, so it does not ride along with the rest of the row.
+func (c ModelCalendar) PlanAction(milestoneID string) string {
+	return c.AddAction() + "/" + milestoneID + "/plan"
 }
 
 // CalendarRow is one milestone as the section shows it. Every value is already
@@ -109,6 +129,10 @@ type CalendarRow struct {
 // Form is the form the controls of one row belong to. It sits outside the
 // table, because a table cell inside a form cannot hold another form.
 func (r CalendarRow) Form() string { return "milestone-" + r.MilestoneID }
+
+// PlanForm is the form the plan date box of one row belongs to. It is a form of
+// its own, because moving a plan date is a write of its own.
+func (r CalendarRow) PlanForm() string { return "plan-" + r.MilestoneID }
 
 // PlanDay is the plan date in the display form, for a row that carries no box.
 func (r CalendarRow) PlanDay() string { return dayLabel(r.Plan) }
@@ -175,6 +199,56 @@ func dayLabel(wire string) string {
 	return labels.Date(day)
 }
 
+// CalendarMove is what the section asks before it moves a plan date: the steps
+// the move carries, and the date the user typed.
+type CalendarMove struct {
+	MilestoneID string
+
+	// Plan is the wire form of the date the user typed. The panel posts it
+	// back, so the write moves the date the user read about.
+	Plan string
+
+	// Rows names the step the user moved first, and then the steps the shift
+	// carries with it.
+	Rows []MoveRow
+}
+
+// MoveRow is one step a move carries: the date it leaves, and the date it
+// takes.
+type MoveRow struct {
+	Type string
+	From string
+	To   string
+}
+
+// NewCalendarMove builds the panel from the steps the rule moves. It reads the
+// name of every step off the section, which already holds one row per milestone
+// of the model.
+func NewCalendarMove(section ModelCalendar, moves []milestones.Move) CalendarMove {
+	if len(moves) == 0 {
+		return CalendarMove{}
+	}
+
+	names := make(map[string]string, len(section.Rows)+len(section.Retired))
+	for _, row := range slices.Concat(section.Rows, section.Retired) {
+		names[row.MilestoneID] = row.Type
+	}
+
+	move := CalendarMove{
+		MilestoneID: moves[0].Milestone.ID.String(),
+		Plan:        date.ISO(moves[0].Plan),
+		Rows:        make([]MoveRow, len(moves)),
+	}
+	for i, one := range moves {
+		move.Rows[i] = MoveRow{
+			Type: names[one.Milestone.ID.String()],
+			From: labels.Date(one.Milestone.Plan),
+			To:   labels.Date(one.Plan),
+		}
+	}
+	return move
+}
+
 // modelCalendar is the section under the photo strip: the steps of the model,
 // with the three dates and the state of each one.
 templ modelCalendar(calendar ModelCalendar, messages map[string]string) {
@@ -187,6 +261,9 @@ templ modelCalendar(calendar ModelCalendar, messages map[string]string) {
 		@shared.FormAlert(messages[FieldMilestonePlan])
 		@shared.FormAlert(messages[FieldMilestoneFact])
 		@shared.FormAlert(messages[FieldMilestoneNote])
+		if calendar.Asks() {
+			@movePanel(calendar)
+		}
 		if len(calendar.Rows) == 0 {
 			@shared.EmptyPanel(labels.MilestonesEmpty)
 		} else {
@@ -224,13 +301,14 @@ templ modelCalendar(calendar ModelCalendar, messages map[string]string) {
 templ calendarForms(calendar ModelCalendar) {
 	<div hidden>
 		for _, row := range calendar.Rows {
+			// The plan date stands in a form of its own.
 			<form id={ row.Form() } method="post" action={ templ.SafeURL(calendar.RowAction(row)) }>
 				<input type="hidden" name={ FieldMilestoneActive } value="true"/>
 			</form>
+			<form id={ row.PlanForm() } method="post" action={ templ.SafeURL(calendar.PlanAction(row.MilestoneID)) }></form>
 		}
 		for _, row := range calendar.Retired {
 			<form id={ row.Form() } method="post" action={ templ.SafeURL(calendar.RowAction(row)) }>
-				<input type="hidden" name={ FieldMilestonePlan } value={ row.Plan }/>
 				<input type="hidden" name={ FieldMilestoneFact } value={ row.Fact }/>
 				<input type="hidden" name={ FieldMilestoneNote } value={ row.Note }/>
 			</form>
@@ -269,15 +347,26 @@ templ calendarRow(calendar ModelCalendar, row CalendarRow) {
 			}
 		</td>
 		<td class="px-3 py-2">
-			@input.Input(input.Props{
-				ID:         FieldMilestonePlan + "-" + row.MilestoneID,
-				Name:       FieldMilestonePlan,
-				Form:       row.Form(),
-				Type:       input.TypeDate,
-				Value:      row.Plan,
-				Class:      "w-40",
-				Attributes: templ.Attributes{"aria-label": labels.MilestonesPlan},
-			})
+			<div class="flex items-center gap-1">
+				@input.Input(input.Props{
+					ID:         FieldMilestonePlan + "-" + row.MilestoneID,
+					Name:       FieldMilestonePlan,
+					Form:       row.PlanForm(),
+					Type:       input.TypeDate,
+					Value:      row.Plan,
+					Class:      "w-40",
+					Attributes: templ.Attributes{"aria-label": labels.MilestonesPlan},
+				})
+				@button.Button(button.Props{
+					Type:       button.TypeSubmit,
+					Form:       row.PlanForm(),
+					Variant:    button.VariantOutline,
+					Size:       button.SizeSm,
+					Attributes: templ.Attributes{"title": labels.ActionMovePlan},
+				}) {
+					{ labels.ActionMovePlan }
+				}
+			</div>
 		</td>
 		<td class="px-3 py-2">
 			@input.Input(input.Props{
@@ -360,6 +449,62 @@ templ calendarStateCell(row CalendarRow) {
 	if row.OnTime {
 		<span class="block text-xs text-muted-foreground">{ labels.MilestonesOnTime }</span>
 	}
+}
+
+// movePanel is what the section asks before it moves a plan date: the steps the
+// move carries, and the switch that turns the shift off.
+//
+// The panel writes nothing by itself. The user confirms, and the write it posts
+// moves the dates the user just read.
+templ movePanel(calendar ModelCalendar) {
+	<div role="alert" class="mb-6 rounded-lg border border-primary/50 bg-primary/5 p-4">
+		<h3 class="mb-1 font-medium">{ labels.MilestonesMoveTitle }</h3>
+		<p class="mb-3 text-sm text-muted-foreground">{ labels.MilestonesMoveHint }</p>
+		<div class="mb-3 overflow-x-auto rounded-md border bg-background">
+			<table class="w-full text-sm">
+				<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+					<tr>
+						<th scope="col" class="px-3 py-2 font-medium">{ labels.MilestonesStep }</th>
+						<th scope="col" class="px-3 py-2 font-medium">{ labels.MilestonesMoveFrom }</th>
+						<th scope="col" class="px-3 py-2 font-medium">{ labels.MilestonesMoveTo }</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range calendar.Move.Rows {
+						<tr class="border-b last:border-0">
+							<td class="px-3 py-2">{ row.Type }</td>
+							<td class="px-3 py-2 whitespace-nowrap text-muted-foreground">{ row.From }</td>
+							<td class="px-3 py-2 whitespace-nowrap font-medium">{ row.To }</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		<form
+			method="post"
+			action={ templ.SafeURL(calendar.PlanAction(calendar.Move.MilestoneID)) }
+			class="flex flex-wrap items-center gap-4"
+		>
+			<input type="hidden" name={ FieldMilestonePlan } value={ calendar.Move.Plan }/>
+			<input type="hidden" name={ FieldMilestoneConfirm } value="true"/>
+			<label class="flex items-center gap-2 text-sm font-medium">
+				<input
+					type="checkbox"
+					name={ FieldMilestoneShift }
+					value="true"
+					checked
+					class="size-4 rounded border border-input accent-primary"
+				/>
+				{ labels.MilestonesMoveShift }
+			</label>
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+				{ labels.ActionConfirmMove }
+			}
+			<a href={ templ.SafeURL(paths.Models + "/" + calendar.ModelID) } class="text-sm text-muted-foreground underline">
+				{ labels.ActionCancel }
+			</a>
+		</form>
+	</div>
 }
 
 // retiredMilestones is what left the calendar. It stays on the screen, because

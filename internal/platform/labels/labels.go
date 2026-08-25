@@ -308,6 +308,13 @@ const (
 	MilestonesAddStepHint  = "Этап вне критического пути. Укажите плановую дату."
 	MilestonesNoType       = "У модели уже есть все существующие этапы."
 	MilestonesStale        = "Этап уже изменён. Откройте страницу заново."
+
+	// The panel that asks about a plan date before it moves it.
+	MilestonesMoveTitle = "Перенос плановой даты"
+	MilestonesMoveHint  = "Следующие этапы сдвинутся на то же число дней. Этапы с фактической датой остаются на месте."
+	MilestonesMoveFrom  = "Было"
+	MilestonesMoveTo    = "Станет"
+	MilestonesMoveShift = "Сдвинуть следующие этапы"
 )
 
 // The actions of the calendar section.
@@ -318,6 +325,8 @@ const (
 	ActionFactClear      = "Снять факт"
 	ActionRetireStep     = "Снять этап"
 	ActionRestoreStep    = "Вернуть этап"
+	ActionMovePlan       = "Перенести"
+	ActionConfirmMove    = "Подтвердить"
 	ActionMilestoneEdits = "Даты этапа"
 )
 
