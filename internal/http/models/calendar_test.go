@@ -3,6 +3,7 @@ package models_test
 import (
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -229,6 +230,211 @@ func calendarRows(t *testing.T, d testkit.Deps, cookie *http.Cookie, modelID str
 // calendarPath is where one row of the calendar posts.
 func calendarPath(modelID string, one milestones.Milestone) string {
 	return paths.Models + "/" + modelID + "/milestones/" + one.ID.String()
+}
+
+// planPath is where the plan date of one step posts.
+func planPath(modelID, milestoneID string) string {
+	return paths.Models + "/" + modelID + "/milestones/" + milestoneID + "/plan"
+}
+
+// moveForm is what the plan date box of one row posts: the date alone.
+func moveForm(plan string) url.Values {
+	return url.Values{views.FieldMilestonePlan: {plan}}
+}
+
+// confirmForm is what the move panel posts back. shift false is the switch the
+// user turned off, which writes the one step.
+func confirmForm(plan string, shift bool) url.Values {
+	form := moveForm(plan)
+	form.Set(views.FieldMilestoneConfirm, "true")
+	if shift {
+		form.Set(views.FieldMilestoneShift, "true")
+	}
+	return form
+}
+
+// aChain writes a model whose calendar holds one step per plan date given, and
+// returns the steps in the order the dates name them.
+func aChain(t *testing.T, d testkit.Deps, cookie *http.Cookie, modelID string, dates ...string) []milestones.Milestone {
+	t.Helper()
+
+	chain := make([]milestones.Milestone, len(dates))
+	for i, day := range dates {
+		step := testkit.CreatedMilestoneType(t, d, cookie, "step"+strconv.Itoa(i), "Step "+strconv.Itoa(i))
+		chain[i] = testkit.AddedMilestone(t, d, modelID, step, day)
+	}
+	return chain
+}
+
+// heldPlans is the plan date of every step the section shows, in the order it
+// shows them. It reads the boxes of the table, which carry the wire form.
+func heldPlans(t *testing.T, d testkit.Deps, cookie *http.Cookie, modelID string) []string {
+	t.Helper()
+
+	table := section(t, testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String())
+
+	// The date box of a row. The row also carries the plan as a hidden field,
+	// so the marker names the visible box and not that one.
+	const box = `type="date" name="` + views.FieldMilestonePlan + `" value="`
+
+	var held []string
+	for rest := table; ; {
+		_, remainder, found := strings.Cut(rest, box)
+		if !found {
+			return held
+		}
+		day, after, _ := strings.Cut(remainder, `"`)
+		rest = after
+		held = append(held, day)
+	}
+}
+
+// movePanel is the panel that asks about a move, and nothing else of the
+// section. The table under it names the same steps.
+func movePanel(t *testing.T, body string) string {
+	t.Helper()
+
+	from := strings.Index(body, labels.MilestonesMoveTitle)
+	to := strings.Index(body, labels.ActionCancel)
+	if from < 0 || to < from {
+		t.Fatalf("the section holds no move panel: %s", body)
+	}
+	return body[from:to]
+}
+
+func TestMovingAPlanDateLaterAsksBeforeItWrites(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	chain := aChain(t, d, cookie, modelID, "2027-01-04", "2027-01-04", "2027-02-01")
+
+	moved := date.MustParse("2027-01-14")
+	rec := testkit.PostAs(t, d, planPath(modelID, chain[0].ID.String()), moveForm(date.ISO(moved)), cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusOK, rec.Body)
+	}
+
+	// The panel names the step the user moved and the step the shift carries,
+	// each with the date it leaves and the date it takes.
+	panel := movePanel(t, rec.Body.String())
+	testkit.Wants(t, panel,
+		labels.MilestonesMoveHint,
+		labels.MilestonesMoveFrom,
+		labels.MilestonesMoveTo,
+		labels.MilestonesMoveShift,
+		labels.ActionConfirmMove,
+		"step0", "step2",
+		labels.Date(chain[0].Plan),
+		labels.Date(moved),
+		labels.Date(chain[2].Plan),
+		labels.Date(date.AddDays(chain[2].Plan, 10)),
+	)
+
+	// The step on the same day as the one the user moved is not later than it,
+	// so the panel leaves it out.
+	if strings.Contains(panel, "step1") {
+		t.Error("the panel moves a step that stands on the same day")
+	}
+
+	// Nothing is written until the user answers.
+	want := []string{"2027-01-04", "2027-01-04", "2027-02-01"}
+	if got := heldPlans(t, d, cookie, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v: the panel wrote before it asked", got, want)
+	}
+}
+
+func TestConfirmingTheMoveShiftsTheLaterSteps(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	chain := aChain(t, d, cookie, modelID, "2027-01-04", "2027-01-20", "2027-02-01")
+
+	// The last step is done, and work that is done does not move.
+	testkit.EditedMilestone(t, d, chain[2], milestones.MilestoneUpdateParams{
+		Plan: chain[2].Plan, Fact: date.MustParse(yesterday), Active: true,
+	})
+
+	form := confirmForm("2027-01-14", true)
+	rec := testkit.PostAs(t, d, planPath(modelID, chain[0].ID.String()), form, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	want := []string{"2027-01-14", "2027-01-30", "2027-02-01"}
+	if got := heldPlans(t, d, cookie, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestConfirmingWithTheSwitchOffMovesTheOneStep(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	chain := aChain(t, d, cookie, modelID, "2027-01-04", "2027-01-20")
+
+	form := confirmForm("2027-01-14", false)
+	rec := testkit.PostAs(t, d, planPath(modelID, chain[0].ID.String()), form, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	want := []string{"2027-01-14", "2027-01-20"}
+	if got := heldPlans(t, d, cookie, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestMovingAPlanDateEarlierWritesWithNoQuestion(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	chain := aChain(t, d, cookie, modelID, "2027-01-04", "2027-01-20")
+
+	rec := testkit.PostAs(t, d, planPath(modelID, chain[1].ID.String()), moveForm("2027-01-10"), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	// An earlier date moves its own step. Pulling a chain forward is a plan.
+	want := []string{"2027-01-04", "2027-01-10"}
+	if got := heldPlans(t, d, cookie, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestTheMovedStepsEachHoldATrailEntry(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	chain := aChain(t, d, cookie, modelID, "2027-01-04", "2027-01-20")
+
+	form := confirmForm("2027-01-14", true)
+	if rec := testkit.PostAs(t, d, planPath(modelID, chain[0].ID.String()), form, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
+	testkit.Wants(t, body,
+		"step0 — "+labels.MilestonesAuditPlan+": "+labels.Date(chain[0].Plan)+" → "+labels.Date(date.MustParse("2027-01-14")),
+		"step1 — "+labels.MilestonesAuditPlan+": "+labels.Date(chain[1].Plan)+" → "+labels.Date(date.MustParse("2027-01-30")),
+	)
+}
+
+func TestMovingThePlanDateOfAStepThatIsNotThereIs404(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+
+	path := planPath(modelID, testkit.MissingID.String())
+	if rec := testkit.PostAs(t, d, path, moveForm(nextMonth), cookie); rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d: %s", rec.Code, http.StatusNotFound, rec.Body)
+	}
+}
+
+func TestMovingAPlanDateRefusesAnEmptyBox(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	chain := aChain(t, d, cookie, modelID, "2027-01-04")
+
+	rec := testkit.PostAs(t, d, planPath(modelID, chain[0].ID.String()), moveForm(""), cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body)
+	}
+	testkit.Wants(t, rec.Body.String(), testkit.Message(validate.Required))
 }
 
 // aTemplate writes a critical path with one step per offset, and returns the id
