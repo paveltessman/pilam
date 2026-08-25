@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -149,5 +150,95 @@ func TestListSeasonsOrdersByStartDate(t *testing.T) {
 	}
 	if len(seasons) != 2 || seasons[0].Name != "S1" || seasons[1].Name != "A1" {
 		t.Errorf("ListSeasons = %v, want S1 then A1", []string{seasons[0].Name, seasons[1].Name})
+	}
+}
+
+// season is one row the current-season rule reads.
+func season(n int, name, start string, active bool) Season {
+	return Season{
+		ID:        ids.MustParse(fmt.Sprintf("01912345-0000-7000-8000-%012d", n)),
+		Name:      name,
+		StartDate: date.MustParse(start),
+		Active:    active,
+	}
+}
+
+func TestCurrentSeasonIsTheActiveSeasonThatStartedLast(t *testing.T) {
+	seasons := []Season{
+		season(1, "SS25", "2025-11-01", true),
+		season(2, "SS26", "2026-05-01", true),
+
+		// It started, and nobody works in it any more.
+		season(3, "AW26", "2026-06-01", false),
+
+		// It is active, and it has not started yet.
+		season(4, "SS27", "2027-01-01", true),
+	}
+
+	got := CurrentSeason(seasons, date.MustParse("2026-08-18"))
+
+	if got.Name != "SS26" {
+		t.Errorf("CurrentSeason = %q, want the active season that started last", got.Name)
+	}
+}
+
+func TestCurrentSeasonCountsASeasonThatStartsToday(t *testing.T) {
+	seasons := []Season{
+		season(1, "SS26", "2026-01-01", true),
+		season(2, "AW26", "2026-08-18", true),
+	}
+
+	if got := CurrentSeason(seasons, date.MustParse("2026-08-18")); got.Name != "AW26" {
+		t.Errorf("CurrentSeason = %q, want the season that starts today", got.Name)
+	}
+}
+
+func TestCurrentSeasonTakesTheEarliestWhenEveryActiveSeasonStartsLater(t *testing.T) {
+	seasons := []Season{
+		season(1, "AW27", "2027-05-01", true),
+		season(2, "SS27", "2027-01-01", true),
+		season(3, "SS26", "2026-01-01", false),
+	}
+
+	got := CurrentSeason(seasons, date.MustParse("2026-08-18"))
+
+	if got.Name != "SS27" {
+		t.Errorf("CurrentSeason = %q, want the active season that starts first", got.Name)
+	}
+}
+
+func TestCurrentSeasonTakesTheNewestWhenNoSeasonIsActive(t *testing.T) {
+	seasons := []Season{
+		season(1, "SS25", "2025-01-01", false),
+		season(2, "SS26", "2026-01-01", false),
+	}
+
+	got := CurrentSeason(seasons, date.MustParse("2026-08-18"))
+
+	if got.Name != "SS26" {
+		t.Errorf("CurrentSeason = %q, want the newest season of all", got.Name)
+	}
+}
+
+func TestCurrentSeasonOfNothing(t *testing.T) {
+	if got := CurrentSeason(nil, date.MustParse("2026-08-18")); got.ID != ids.Nil {
+		t.Errorf("CurrentSeason = %+v, want the zero season", got)
+	}
+}
+
+// Two seasons that start on the same day break the tie by name, so the answer
+// does not depend on the order the rows arrive in.
+func TestCurrentSeasonAnswersTheSameWhateverOrderItReads(t *testing.T) {
+	today := date.MustParse("2026-08-18")
+	seasons := []Season{
+		season(1, "SS26 main", "2026-05-01", true),
+		season(2, "SS26 carry", "2026-05-01", true),
+		season(3, "SS25", "2026-01-01", true),
+	}
+	want := CurrentSeason(seasons, today)
+
+	slices.Reverse(seasons)
+	if got := CurrentSeason(seasons, today); got != want {
+		t.Errorf("the reversed read answers %q, want %q", got.Name, want.Name)
 	}
 }
