@@ -234,11 +234,9 @@ func AddMilestone(
 	return handler
 }
 
-// SaveMilestone writes one row of the calendar: the plan date, the fact date,
-// the note and the active flag.
-//
-// The row carries several buttons, and the one the user pressed says what to do
-// with the fact date and with the flag. The boxes of the row state the rest.
+// SaveMilestone writes one row of the calendar: the fact date, the note and the
+// active flag. The plan date is not on it, because a plan date carries the
+// steps after it. The plan date is moved by MovePlan.
 func SaveMilestone(
 	catalogSvc *catalog.Service,
 	milestoneSvc *milestones.Service,
@@ -259,17 +257,15 @@ func SaveMilestone(
 			return
 		}
 
-		plan, planErr := shared.PostedDay(r, views.FieldMilestonePlan)
 		fact, factErr := shared.PostedDay(r, views.FieldMilestoneFact)
 		in := milestones.MilestoneUpdateParams{
-			Plan:   plan,
 			Fact:   fact,
 			Note:   r.PostFormValue(views.FieldMilestoneNote),
 			Active: shared.PostedFlag(r, views.FieldMilestoneActive),
 		}
 		pressed(r, milestoneSvc.Today(), &in)
 
-		err := errors.Join(planErr, factErr)
+		err := factErr
 		if err == nil {
 			err = milestoneSvc.UpdateMilestone(ctx, milestoneID, in)
 		}
@@ -284,7 +280,7 @@ func SaveMilestone(
 			return
 		}
 
-		errs, ok := shared.Rejections(planErr, factErr, err)
+		errs, ok := shared.Rejections(factErr, err)
 		if !ok {
 			logger.Error("updating a milestone failed unexpectedly",
 				"model", model.ID, "milestone", milestoneID, "err", err)

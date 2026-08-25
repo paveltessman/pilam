@@ -93,7 +93,7 @@ func TestCalendarSectionReadsEveryStepAgainstToday(t *testing.T) {
 	testkit.AddedMilestone(t, d, modelID, planned, nextMonth)
 	stamped := testkit.AddedMilestone(t, d, modelID, done, yesterday)
 	testkit.EditedMilestone(t, d, stamped, milestones.MilestoneUpdateParams{
-		Plan: stamped.Plan, Fact: date.MustParse(yesterday), Active: true,
+		Fact: date.MustParse(yesterday), Active: true,
 	})
 
 	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
@@ -124,7 +124,7 @@ func TestCalendarSectionKeepsTheBaselineQuietUntilThePlanMoves(t *testing.T) {
 	}
 
 	moved := date.AddDays(one.Plan, 12)
-	testkit.EditedMilestone(t, d, one, milestones.MilestoneUpdateParams{Plan: moved, Active: true})
+	testkit.MovedPlan(t, d, one, moved)
 
 	testkit.Wants(t, section(t, testkit.GetAs(t, d, path, cookie).Body.String()),
 		labels.Date(one.Baseline),
@@ -147,7 +147,7 @@ func TestCalendarSectionMovesARetiredStepOutOfTheTable(t *testing.T) {
 
 	fit := testkit.CreatedMilestoneType(t, d, cookie, "fit", "Fit approved")
 	one := testkit.AddedMilestone(t, d, modelID, fit, nextWeek)
-	testkit.EditedMilestone(t, d, one, milestones.MilestoneUpdateParams{Plan: one.Plan, Active: false})
+	testkit.EditedMilestone(t, d, one, milestones.MilestoneUpdateParams{Active: false})
 
 	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
 
@@ -163,8 +163,9 @@ func TestModelCardShowsTheHistoryOfItsStepsUnderTheStepName(t *testing.T) {
 	fit := testkit.CreatedMilestoneType(t, d, cookie, "fit", "Fit approved")
 	one := testkit.AddedMilestone(t, d, modelID, fit, nextWeek)
 	moved := date.AddDays(one.Plan, 12)
+	testkit.MovedPlan(t, d, one, moved)
 	testkit.EditedMilestone(t, d, one, milestones.MilestoneUpdateParams{
-		Plan: moved, Note: "the sample was late", Active: true,
+		Note: "the sample was late", Active: true,
 	})
 
 	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
@@ -187,11 +188,9 @@ func TestModelCardShowsTheHistoryOfItsStepsUnderTheStepName(t *testing.T) {
 // stands on.
 const dropTarget = "2027-02-15"
 
-// milestoneForm is what one row of the calendar posts. action is the button the
-// user pressed, and it is empty for a plain save.
-func milestoneForm(plan, fact, note, action string) url.Values {
+// milestoneForm is what one row of the calendar posts.
+func milestoneForm(fact, note, action string) url.Values {
 	form := url.Values{
-		views.FieldMilestonePlan:   {plan},
 		views.FieldMilestoneFact:   {fact},
 		views.FieldMilestoneNote:   {note},
 		views.FieldMilestoneActive: {"true"},
@@ -349,7 +348,7 @@ func TestConfirmingTheMoveShiftsTheLaterSteps(t *testing.T) {
 
 	// The last step is done, and work that is done does not move.
 	testkit.EditedMilestone(t, d, chain[2], milestones.MilestoneUpdateParams{
-		Plan: chain[2].Plan, Fact: date.MustParse(yesterday), Active: true,
+		Fact: date.MustParse(yesterday), Active: true,
 	})
 
 	form := confirmForm("2027-01-14", true)
@@ -481,11 +480,12 @@ func TestApplyingATemplateAgainAddsOnlyTheMissingStepAndMovesNoDate(t *testing.T
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
 
-	// The user moves one plan date, and a third step joins the path after that.
+	// The user moves one plan date, with the shift off so the step after it
+	// stays, and a third step joins the path after that.
 	rows := calendarRows(t, d, cookie, modelID)
-	moved := milestoneForm(nextMonth, "", "", "")
-	if rec := testkit.PostAs(t, d, path+"/milestones/"+rows[0], moved, cookie); rec.Code != http.StatusSeeOther {
-		t.Fatalf("moving a plan date: status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	moved := testkit.PostAs(t, d, planPath(modelID, rows[0]), confirmForm(nextMonth, false), cookie)
+	if moved.Code != http.StatusSeeOther {
+		t.Fatalf("moving a plan date: status = %d, want %d: %s", moved.Code, http.StatusSeeOther, moved.Body)
 	}
 	late := testkit.CreatedMilestoneType(t, d, cookie, "sale", "Ready for sale")
 	testkit.AddedTemplateItem(t, d, cookie, templateID, late, "-7")
@@ -583,24 +583,45 @@ func TestAddingAStepTheModelAlreadyHoldsIsRefused(t *testing.T) {
 	testkit.Wants(t, rec.Body.String(), testkit.Message(validate.Taken))
 }
 
-func TestSavingARowMovesThePlanDateAndWritesTheNote(t *testing.T) {
+func TestSavingARowWritesTheNoteAndMovesNoDate(t *testing.T) {
 	d := testkit.NewDeps(t)
 	modelID, cookie := calendarModel(t, d)
 	shoot := testkit.CreatedMilestoneType(t, d, cookie, "shoot", "Photo shoot")
 	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
 
-	form := milestoneForm(nextMonth, "", "the sample was late", "")
+	// The row carries the plan date the user typed as well. The write ignores
+	// it, because a plan date carries the steps after it and posts on its own.
+	form := milestoneForm("", "the sample was late", "")
+	form.Set(views.FieldMilestonePlan, nextMonth)
 	rec := testkit.PostAs(t, d, calendarPath(modelID, one), form, cookie)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
 
 	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
-	testkit.Wants(t, section(t, body),
-		`value="`+nextMonth+`"`,
-		"the sample was late",
-		labels.Date(one.Baseline),
-	)
+	table := section(t, body)
+	testkit.Wants(t, table, "the sample was late", `value="`+nextWeek+`"`)
+	if strings.Contains(table, `value="`+nextMonth+`"`) {
+		t.Error("the row save moved the plan date")
+	}
+	if strings.Contains(body, "shoot — "+labels.MilestonesAuditPlan) {
+		t.Error("the row save recorded a plan date move")
+	}
+}
+
+func TestMovingThePlanDateKeepsTheBaseline(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	shoot := testkit.CreatedMilestoneType(t, d, cookie, "shoot", "Photo shoot")
+	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
+
+	rec := testkit.PostAs(t, d, planPath(modelID, one.ID.String()), moveForm(nextMonth), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
+	testkit.Wants(t, section(t, body), `value="`+nextMonth+`"`, labels.Date(one.Baseline))
 	testkit.Wants(t, body, "shoot — "+labels.MilestonesAuditPlan)
 }
 
@@ -611,7 +632,7 @@ func TestStampingTheFactAsTodayAndClearingItAgain(t *testing.T) {
 	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
 	path := calendarPath(modelID, one)
 
-	stamp := milestoneForm(nextWeek, "", "", views.RowFactToday)
+	stamp := milestoneForm("", "", views.RowFactToday)
 	if rec := testkit.PostAs(t, d, path, stamp, cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("stamping: status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
@@ -619,7 +640,7 @@ func TestStampingTheFactAsTodayAndClearingItAgain(t *testing.T) {
 	table := section(t, testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String())
 	testkit.Wants(t, table, `value="`+date.ISO(today)+`"`, labels.MilestonesStateDone)
 
-	clear := milestoneForm(nextWeek, date.ISO(today), "", views.RowFactClear)
+	clear := milestoneForm(date.ISO(today), "", views.RowFactClear)
 	if rec := testkit.PostAs(t, d, path, clear, cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("clearing: status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
@@ -640,7 +661,7 @@ func TestSavingARowRefusesAFactDateInTheFuture(t *testing.T) {
 	shoot := testkit.CreatedMilestoneType(t, d, cookie, "shoot", "Photo shoot")
 	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
 
-	form := milestoneForm(nextWeek, date.ISO(date.AddDays(today, 1)), "", "")
+	form := milestoneForm(date.ISO(date.AddDays(today, 1)), "", "")
 	rec := testkit.PostAs(t, d, calendarPath(modelID, one), form, cookie)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body)
@@ -654,7 +675,7 @@ func TestSavingARowRefusesANoteThatIsTooLong(t *testing.T) {
 	shoot := testkit.CreatedMilestoneType(t, d, cookie, "shoot", "Photo shoot")
 	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
 
-	form := milestoneForm(nextWeek, "", strings.Repeat("я", milestones.MaxNoteLen+1), "")
+	form := milestoneForm("", strings.Repeat("я", milestones.MaxNoteLen+1), "")
 	rec := testkit.PostAs(t, d, calendarPath(modelID, one), form, cookie)
 	if rec.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusUnprocessableEntity, rec.Body)
@@ -674,14 +695,14 @@ func TestTakingAStepOffTheCalendarAndPuttingItBack(t *testing.T) {
 	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
 	path := calendarPath(modelID, one)
 
-	retire := milestoneForm(nextWeek, "", "", views.RowRetire)
+	retire := milestoneForm("", "", views.RowRetire)
 	if rec := testkit.PostAs(t, d, path, retire, cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("retiring: status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
 	testkit.Wants(t, section(t, testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()),
 		labels.MilestonesRetired, labels.MilestonesEmpty)
 
-	restore := milestoneForm(nextWeek, "", "", views.RowRestore)
+	restore := milestoneForm("", "", views.RowRestore)
 	if rec := testkit.PostAs(t, d, path, restore, cookie); rec.Code != http.StatusSeeOther {
 		t.Fatalf("restoring: status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
@@ -700,12 +721,19 @@ func TestAMemberEditsTheCalendarOfAModel(t *testing.T) {
 	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
 
 	member := testkit.LoggedIn(t, d, testkit.TestEmail, testkit.TestPasswd)
-	form := milestoneForm(nextMonth, "", "", "")
+	form := milestoneForm("", "the sample was late", "")
 	if rec := testkit.PostAs(t, d, calendarPath(modelID, one), form, member); rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
 	}
 
+	// A member moves a plan date as well, and the move is its own write.
+	move := testkit.PostAs(t, d, planPath(modelID, one.ID.String()), moveForm(nextMonth), member)
+	if move.Code != http.StatusSeeOther {
+		t.Fatalf("moving a plan date: status = %d, want %d: %s", move.Code, http.StatusSeeOther, move.Body)
+	}
+
 	testkit.Wants(t, section(t, testkit.GetAs(t, d, paths.Models+"/"+modelID, member).Body.String()),
+		"the sample was late",
 		`value="`+nextMonth+`"`)
 }
 
@@ -714,7 +742,7 @@ func TestSavingARowThatIsNotThereIs404(t *testing.T) {
 	modelID, cookie := calendarModel(t, d)
 
 	path := paths.Models + "/" + modelID + "/milestones/" + testkit.MissingID.String()
-	form := milestoneForm(nextWeek, "", "", "")
+	form := milestoneForm("", "", "")
 	if rec := testkit.PostAs(t, d, path, form, cookie); rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d: %s", rec.Code, http.StatusNotFound, rec.Body)
 	}

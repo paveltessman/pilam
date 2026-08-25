@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/paveltessman/pilam/internal/auth"
 	milestoneviews "github.com/paveltessman/pilam/internal/http/milestones/views"
@@ -70,6 +71,16 @@ func EditedMilestone(t *testing.T, d Deps, one milestones.Milestone, in mileston
 
 	if err := d.MilestoneSvc.UpdateMilestone(ActorContext(t, RootUserID), one.ID, in); err != nil {
 		t.Fatalf("editing milestone %s: %v", one.ID, err)
+	}
+}
+
+// MovedPlan writes the plan date of one step, with the shift turned off, so it
+// moves that step and nothing else.
+func MovedPlan(t *testing.T, d Deps, one milestones.Milestone, plan time.Time) {
+	t.Helper()
+
+	if _, err := d.MilestoneSvc.MovePlan(ActorContext(t, RootUserID), one.ID, plan, false); err != nil {
+		t.Fatalf("moving the plan date of milestone %s: %v", one.ID, err)
 	}
 }
 

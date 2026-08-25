@@ -301,17 +301,14 @@ templ modelCalendar(calendar ModelCalendar, messages map[string]string) {
 templ calendarForms(calendar ModelCalendar) {
 	<div hidden>
 		for _, row := range calendar.Rows {
-			// The plan date stands in a form of its own, so the row carries it
-			// as it is: a save of the note or the fact moves no date.
+			// The plan date stands in a form of its own.
 			<form id={ row.Form() } method="post" action={ templ.SafeURL(calendar.RowAction(row)) }>
 				<input type="hidden" name={ FieldMilestoneActive } value="true"/>
-				<input type="hidden" name={ FieldMilestonePlan } value={ row.Plan }/>
 			</form>
 			<form id={ row.PlanForm() } method="post" action={ templ.SafeURL(calendar.PlanAction(row.MilestoneID)) }></form>
 		}
 		for _, row := range calendar.Retired {
 			<form id={ row.Form() } method="post" action={ templ.SafeURL(calendar.RowAction(row)) }>
-				<input type="hidden" name={ FieldMilestonePlan } value={ row.Plan }/>
 				<input type="hidden" name={ FieldMilestoneFact } value={ row.Fact }/>
 				<input type="hidden" name={ FieldMilestoneNote } value={ row.Note }/>
 			</form>

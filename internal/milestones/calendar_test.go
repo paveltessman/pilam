@@ -101,9 +101,8 @@ func TestApplyTemplateAgainAddsOnlyTheMissingStepsAndMovesNoDate(t *testing.T) {
 		t.Fatalf("Calendar: %v", err)
 	}
 	moved := date.MustParse("2025-11-30")
-	err = svc.UpdateMilestone(ctx, held[0].ID, MilestoneUpdateParams{Plan: moved, Active: true})
-	if err != nil {
-		t.Fatalf("UpdateMilestone: %v", err)
+	if _, err := svc.MovePlan(ctx, held[0].ID, moved, false); err != nil {
+		t.Fatalf("MovePlan: %v", err)
 	}
 	late := milestoneType(t, svc, ctx, "sale", "Ready for sale")
 	templateItem(t, svc, ctx, template.ID, late.ID, -7)
@@ -173,7 +172,7 @@ func TestApplyTemplateKeepsAStepTheUserRetired(t *testing.T) {
 		t.Fatalf("Calendar: %v", err)
 	}
 	retired := held[0]
-	err = svc.UpdateMilestone(ctx, retired.ID, MilestoneUpdateParams{Plan: retired.Plan, Active: false})
+	err = svc.UpdateMilestone(ctx, retired.ID, MilestoneUpdateParams{Active: false})
 	if err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
@@ -306,7 +305,6 @@ func TestUpdateMilestoneRecordsOneEntryPerFieldThatMoved(t *testing.T) {
 	trail.entries = nil
 
 	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{
-		Plan:   date.MustParse("2026-06-01"),
 		Fact:   date.MustParse("2026-06-02"),
 		Note:   "the sample was late",
 		Active: true,
@@ -315,11 +313,11 @@ func TestUpdateMilestoneRecordsOneEntryPerFieldThatMoved(t *testing.T) {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
 
-	want := []string{audit.ActionChanged, audit.ActionFactStamped, audit.ActionChanged}
+	want := []string{audit.ActionFactStamped, audit.ActionChanged}
 	if got := trail.actions(); !slices.Equal(got, want) {
 		t.Fatalf("trail actions = %v, want %v", got, want)
 	}
-	fields := []string{FieldPlanDate, FieldFactDate, FieldNote}
+	fields := []string{FieldFactDate, FieldNote}
 	for i, entry := range trail.entries {
 		if entry.Entity != audit.EntityMilestone || entry.EntityID != one.ID {
 			t.Errorf("entry %d = %s %s, want %s %s",
@@ -329,21 +327,40 @@ func TestUpdateMilestoneRecordsOneEntryPerFieldThatMoved(t *testing.T) {
 			t.Errorf("entry %d field = %q, want %q", i, entry.FieldKey, fields[i])
 		}
 	}
-	if got := trail.entries[0]; got.Old != "2026-05-20" || got.New != "2026-06-01" {
-		t.Errorf("the plan moved %q → %q, want %q → %q", got.Old, got.New, "2026-05-20", "2026-06-01")
+}
+
+func TestUpdateMilestoneMovesNoDateOfTheCalendar(t *testing.T) {
+	svc, rows, trail := newTestService(t)
+	ctx := signedIn(t)
+	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
+	trail.entries = nil
+
+	// The row writes the note and leaves the plan date where it stands. A plan
+	// date carries the steps after it, so it goes through MovePlan.
+	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{Note: "waiting", Active: true})
+	if err != nil {
+		t.Fatalf("UpdateMilestone: %v", err)
+	}
+
+	calendar, err := svc.Calendar(ctx, one.ModelID)
+	if err != nil {
+		t.Fatalf("Calendar: %v", err)
+	}
+	if got := calendar[0].Plan; !date.Equal(got, one.Plan) {
+		t.Errorf("plan = %s, want %s", date.ISO(got), date.ISO(one.Plan))
+	}
+	if got := trail.only(t); got.FieldKey != FieldNote {
+		t.Errorf("trail entry field = %q, want %q", got.FieldKey, FieldNote)
 	}
 }
 
-func TestUpdateMilestoneNeverMovesTheBaseline(t *testing.T) {
+func TestMovePlanNeverMovesTheBaseline(t *testing.T) {
 	svc, rows, _ := newTestService(t)
 	ctx := signedIn(t)
 	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
 
-	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{
-		Plan: date.MustParse("2026-06-01"), Active: true,
-	})
-	if err != nil {
-		t.Fatalf("UpdateMilestone: %v", err)
+	if _, err := svc.MovePlan(ctx, one.ID, date.MustParse("2026-06-01"), true); err != nil {
+		t.Fatalf("MovePlan: %v", err)
 	}
 
 	calendar, err := svc.Calendar(ctx, one.ModelID)
@@ -364,7 +381,7 @@ func TestUpdateMilestoneStampsAndClearsAFactDate(t *testing.T) {
 	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
 	trail.entries = nil
 
-	stamped := MilestoneUpdateParams{Plan: one.Plan, Fact: date.MustParse("2026-05-18"), Active: true}
+	stamped := MilestoneUpdateParams{Fact: date.MustParse("2026-05-18"), Active: true}
 	if err := svc.UpdateMilestone(ctx, one.ID, stamped); err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
@@ -374,7 +391,7 @@ func TestUpdateMilestoneStampsAndClearsAFactDate(t *testing.T) {
 	}
 
 	trail.entries = nil
-	cleared := MilestoneUpdateParams{Plan: one.Plan, Active: true}
+	cleared := MilestoneUpdateParams{Active: true}
 	if err := svc.UpdateMilestone(ctx, one.ID, cleared); err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
@@ -391,14 +408,12 @@ func TestUpdateMilestoneRefusesAFactDateInTheFuture(t *testing.T) {
 
 	today := date.Of(testNow.Date())
 	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{
-		Plan: one.Plan, Fact: date.AddDays(today, 1), Active: true,
+		Fact: date.AddDays(today, 1), Active: true,
 	})
 	rejects(t, err, FieldFactDate, validate.NotAllowed)
 
 	// Today itself is the day the app offers.
-	err = svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{
-		Plan: one.Plan, Fact: today, Active: true,
-	})
+	err = svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{Fact: today, Active: true})
 	if err != nil {
 		t.Errorf("UpdateMilestone: %v", err)
 	}
@@ -410,18 +425,9 @@ func TestUpdateMilestoneRefusesANoteThatIsTooLong(t *testing.T) {
 	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
 
 	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{
-		Plan: one.Plan, Note: strings.Repeat("я", MaxNoteLen+1), Active: true,
+		Note: strings.Repeat("я", MaxNoteLen+1), Active: true,
 	})
 	rejects(t, err, FieldNote, validate.TooLong)
-}
-
-func TestUpdateMilestoneNeedsAPlanDate(t *testing.T) {
-	svc, rows, _ := newTestService(t)
-	ctx := signedIn(t)
-	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
-
-	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{Active: true})
-	rejects(t, err, FieldPlanDate, validate.Required)
 }
 
 func TestUpdateMilestoneWritesNothingWhenNothingMoved(t *testing.T) {
@@ -430,7 +436,7 @@ func TestUpdateMilestoneWritesNothingWhenNothingMoved(t *testing.T) {
 	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
 	trail.entries = nil
 
-	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{Plan: one.Plan, Active: true})
+	err := svc.UpdateMilestone(ctx, one.ID, MilestoneUpdateParams{Active: true})
 	if err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
@@ -445,7 +451,7 @@ func TestUpdateMilestoneTakesAStepOffTheCalendarAndBack(t *testing.T) {
 	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
 	trail.entries = nil
 
-	off := MilestoneUpdateParams{Plan: one.Plan, Active: false}
+	off := MilestoneUpdateParams{Active: false}
 	if err := svc.UpdateMilestone(ctx, one.ID, off); err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
@@ -454,7 +460,7 @@ func TestUpdateMilestoneTakesAStepOffTheCalendarAndBack(t *testing.T) {
 	}
 
 	trail.entries = nil
-	on := MilestoneUpdateParams{Plan: one.Plan, Active: true}
+	on := MilestoneUpdateParams{Active: true}
 	if err := svc.UpdateMilestone(ctx, one.ID, on); err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}
@@ -468,7 +474,7 @@ func TestUpdateMilestoneReportsAMilestoneThatIsNotThere(t *testing.T) {
 	ctx := signedIn(t)
 
 	err := svc.UpdateMilestone(ctx, ids.MustParse("01912345-0000-7000-8000-00000000cccc"),
-		MilestoneUpdateParams{Plan: date.MustParse("2026-05-20"), Active: true})
+		MilestoneUpdateParams{Active: true})
 	if !errors.Is(err, ErrNoMilestone) {
 		t.Errorf("UpdateMilestone error = %v, want %v", err, ErrNoMilestone)
 	}
@@ -581,9 +587,7 @@ func TestMovePlanLeavesAStepThatHoldsAFactDate(t *testing.T) {
 	modelID, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10", "2026-06-01")
 
 	done := chain[2]
-	err := svc.UpdateMilestone(ctx, done.ID, MilestoneUpdateParams{
-		Plan: done.Plan, Fact: done.Plan, Active: true,
-	})
+	err := svc.UpdateMilestone(ctx, done.ID, MilestoneUpdateParams{Fact: done.Plan, Active: true})
 	if err != nil {
 		t.Fatalf("UpdateMilestone: %v", err)
 	}

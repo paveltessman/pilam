@@ -25,9 +25,9 @@ type CalendarRow struct {
 	State State
 }
 
+// MilestoneUpdateParams is what one row of the calendar edits. The plan date is
+// not on it: it is handled by MovePlan.
 type MilestoneUpdateParams struct {
-	Plan time.Time
-
 	// Fact is the day the step was done. The zero date clears a fact date.
 	Fact time.Time
 
@@ -215,15 +215,12 @@ func (s *Service) AddMilestone(ctx context.Context, modelID, typeID ids.ID, plan
 // UpdateMilestone writes the edited fields of one row and records one trail
 // entry per field that moved. It writes nothing when nothing moved.
 //
-// A plan date moves this one milestone, and MovePlan is where a plan date that
-// carries the rows after it goes. The baseline never moves here: it is what the
-// calendar promised, and only the drop shift moves it.
+// It moves no date of the calendar. The plan date goes through MovePlan.
 func (s *Service) UpdateMilestone(ctx context.Context, milestoneID ids.ID, in MilestoneUpdateParams) error {
-	plan, fact := zeroSafeDay(in.Plan), zeroSafeDay(in.Fact)
+	fact := zeroSafeDay(in.Fact)
 	note := strings.TrimSpace(in.Note)
 
 	var v validate.Validator
-	v.Check(!plan.IsZero(), FieldPlanDate, validate.Required)
 	v.Check(fact.IsZero() || !date.After(fact, s.clock.Today()), FieldFactDate, validate.NotAllowed)
 	v.MaxLen(FieldNote, note, MaxNoteLen)
 	if err := v.Err(); err != nil {
@@ -247,10 +244,6 @@ func (s *Service) UpdateMilestone(ctx context.Context, milestoneID ids.ID, in Mi
 		})
 	}
 
-	if !date.Equal(plan, milestone.Plan) {
-		record(audit.ActionChanged, FieldPlanDate, date.ISO(milestone.Plan), date.ISO(plan))
-		milestone.Plan = plan
-	}
 	if !sameDay(fact, milestone.Fact) {
 		record(factAction(milestone.Fact, fact), FieldFactDate, isoOrNone(milestone.Fact), isoOrNone(fact))
 		milestone.Fact = fact

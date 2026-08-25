@@ -317,8 +317,15 @@ func (r *milestoneRun) facts(
 			note = reasons[(index+step)%len(reasons)]
 		}
 
+		// The plan date is a write of its own, and the shift stays off: the
+		// seed states the date of every step itself.
+		if !date.Equal(plan, one.Plan) {
+			if _, err := r.deps.Milestones.MovePlan(ctx, one.ID, plan, false); err != nil {
+				return fmt.Errorf("seed: moving the plan date of a step of model %s: %w", model.Article, err)
+			}
+		}
+
 		err := r.deps.Milestones.UpdateMilestone(ctx, one.ID, milestones.MilestoneUpdateParams{
-			Plan:   plan,
 			Fact:   fact,
 			Note:   note,
 			Active: true,
