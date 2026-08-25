@@ -74,9 +74,13 @@ templ appHeader(chrome Chrome) {
 	</header>
 }
 
-// items is the nav a user of this role sees.
+// items is the nav a user of this role sees. The milestone list is the one
+// milestone screen a member reaches, so it stands beside the model list.
 func (c Chrome) items() []navItem {
-	items := []navItem{{Label: labels.ModelsTitle, Href: paths.Models}}
+	items := []navItem{
+		{Label: labels.ModelsTitle, Href: paths.Models},
+		{Label: labels.MilestoneListTitle, Href: paths.MilestoneList},
+	}
 	if c.IsRoot {
 		items = append(items,
 			navItem{Label: labels.NavSeasons, Href: paths.Seasons},

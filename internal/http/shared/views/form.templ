@@ -2,6 +2,7 @@ package views
 
 import (
 	"github.com/paveltessman/pilam/internal/http/shared/ui/label"
+	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 )
 
@@ -115,6 +116,23 @@ templ ActiveBox(name string, checked bool) {
 		/>
 		{ labels.StateActive }
 	</label>
+}
+
+// MilestoneState is the word one state of a step reads as. The calendar section
+// of the model card and the milestone list both read it.
+func MilestoneState(state milestones.State) string {
+	switch state {
+	case milestones.StateDone:
+		return labels.MilestonesStateDone
+	case milestones.StateLate:
+		return labels.MilestonesStateLate
+	case milestones.StateDue:
+		return labels.MilestonesStateDue
+	case milestones.StatePlanned:
+		return labels.MilestonesStatePlanned
+	}
+	// A state computed and not named here.
+	return labels.Empty
 }
 
 // StateCell is the `active` flag as a list column reads it.

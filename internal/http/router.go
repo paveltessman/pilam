@@ -138,6 +138,10 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("GET "+paths.Drop, root(drops.Show(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 	mux.Handle("POST "+paths.Drop, root(drops.Save(deps.CatalogSvc, deps.AuthSvc, deps.AuditLog)))
 
+	// The milestone list: the late work of a whole season. It is the one screen
+	// of this section a member reaches, so it sits under the ordinary guard.
+	mux.Handle("GET "+paths.MilestoneList, guard(milestoneshttp.ShowList(deps.CatalogSvc, deps.MilestoneSvc)))
+
 	mux.Handle("GET "+paths.Milestones, root(milestoneshttp.ShowSection(deps.MilestoneSvc)))
 	mux.Handle("POST "+paths.MilestoneTypes, root(milestoneshttp.CreateType(deps.MilestoneSvc)))
 	mux.Handle("GET "+paths.MilestoneTypeNew, root(milestoneshttp.ShowNewType()))

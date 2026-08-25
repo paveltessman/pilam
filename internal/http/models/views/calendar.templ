@@ -158,7 +158,7 @@ func newCalendarRow(row milestones.CalendarRow, name string) CalendarRow {
 		Type:        name,
 		Plan:        date.ISO(row.Plan),
 		Note:        row.Note,
-		State:       calendarState(row.State),
+		State:       shared.MilestoneState(row.State),
 		Late:        row.State == milestones.StateLate,
 		OnTime:      row.OnTime(),
 		Done:        row.Done(),
@@ -172,22 +172,6 @@ func newCalendarRow(row milestones.CalendarRow, name string) CalendarRow {
 		rendered.Slip = labels.Delta(slip)
 	}
 	return rendered
-}
-
-// calendarState is the word one state reads as.
-func calendarState(state milestones.State) string {
-	switch state {
-	case milestones.StateDone:
-		return labels.MilestonesStateDone
-	case milestones.StateLate:
-		return labels.MilestonesStateLate
-	case milestones.StateDue:
-		return labels.MilestonesStateDue
-	case milestones.StatePlanned:
-		return labels.MilestonesStatePlanned
-	}
-	// A state computed and not named here.
-	return labels.Empty
 }
 
 // dayLabel reads a wire date back into the display form.

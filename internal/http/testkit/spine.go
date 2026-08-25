@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	dropviews "github.com/paveltessman/pilam/internal/http/drops/views"
+	modelviews "github.com/paveltessman/pilam/internal/http/models/views"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	seasonviews "github.com/paveltessman/pilam/internal/http/seasons/views"
 )
@@ -58,4 +59,28 @@ func CreatedDrop(t *testing.T, d Deps, cookie *http.Cookie, seasonID, name, targ
 		t.Fatalf("creating drop %q: status = %d, want %d: %s", name, rec.Code, http.StatusSeeOther, rec.Body)
 	}
 	return IDOfRedirect(t, rec, paths.Drops)
+}
+
+// ModelForm is what the model create screen and the card post. It names no
+// critical path, so the model it writes starts with an empty calendar.
+func ModelForm(dropID, article string, active bool) url.Values {
+	form := url.Values{
+		modelviews.FieldModelDrop:    {dropID},
+		modelviews.FieldModelArticle: {article},
+	}
+	if active {
+		form.Set(modelviews.FieldModelActive, "true")
+	}
+	return form
+}
+
+// CreatedModel posts the create form and returns the id of the model it wrote.
+func CreatedModel(t *testing.T, d Deps, cookie *http.Cookie, dropID, article string) string {
+	t.Helper()
+
+	rec := PostAs(t, d, paths.Models, ModelForm(dropID, article, true), cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("creating model %q: status = %d, want %d: %s", article, rec.Code, http.StatusSeeOther, rec.Body)
+	}
+	return IDOfRedirect(t, rec, paths.Models)
 }

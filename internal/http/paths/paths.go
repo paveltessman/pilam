@@ -61,6 +61,10 @@ const (
 const (
 	Milestones = "/milestones"
 
+	// MilestoneList is the late work of a whole season. It is the one milestone
+	// screen a member reaches, so it does not sit under the root guard.
+	MilestoneList = Milestones + "/list"
+
 	MilestoneTypes   = Milestones + "/types"
 	MilestoneTypeNew = MilestoneTypes + "/new"
 	MilestoneType    = MilestoneTypes + "/{id}"
