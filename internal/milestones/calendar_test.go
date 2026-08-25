@@ -522,3 +522,222 @@ func aMilestone(t *testing.T, svc *Service, rows *store, ctx context.Context, pl
 	}
 	return written
 }
+
+// aChain writes one model with one step per plan date given, and returns the
+// model with its steps, in the order the dates name them.
+func aChain(t *testing.T, svc *Service, rows *store, ctx context.Context, dates ...string) (ids.ID, []Milestone) {
+	t.Helper()
+
+	modelID := aModel(rows, "2026-07-16")
+	chain := make([]Milestone, len(dates))
+	for i, day := range dates {
+		step := milestoneType(t, svc, ctx, "step"+strconv.Itoa(i), "Step "+strconv.Itoa(i))
+		written, err := svc.AddMilestone(ctx, modelID, step.ID, date.MustParse(day))
+		if err != nil {
+			t.Fatalf("AddMilestone %q: %v", day, err)
+		}
+		chain[i] = written
+	}
+	return modelID, chain
+}
+
+// heldPlans is the plan date of every step of a model, in plan date order.
+func heldPlans(t *testing.T, svc *Service, ctx context.Context, modelID ids.ID) []string {
+	t.Helper()
+
+	calendar, err := svc.Calendar(ctx, modelID)
+	if err != nil {
+		t.Fatalf("Calendar: %v", err)
+	}
+	out := make([]string, len(calendar))
+	for i, row := range calendar {
+		out[i] = date.ISO(row.Plan)
+	}
+	return out
+}
+
+func TestMovePlanPushesTheLaterStepsByTheSameDays(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	ctx := signedIn(t)
+	modelID, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10", "2026-06-01")
+
+	moved, err := svc.MovePlan(ctx, chain[0].ID, date.MustParse("2026-05-11"), true)
+	if err != nil {
+		t.Fatalf("MovePlan: %v", err)
+	}
+
+	if len(moved) != 3 {
+		t.Fatalf("MovePlan moved %d steps, want 3", len(moved))
+	}
+	want := []string{"2026-05-11", "2026-05-20", "2026-06-11"}
+	if got := heldPlans(t, svc, ctx, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestMovePlanLeavesAStepThatHoldsAFactDate(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	ctx := signedIn(t)
+	modelID, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10", "2026-06-01")
+
+	done := chain[2]
+	err := svc.UpdateMilestone(ctx, done.ID, MilestoneUpdateParams{
+		Plan: done.Plan, Fact: done.Plan, Active: true,
+	})
+	if err != nil {
+		t.Fatalf("UpdateMilestone: %v", err)
+	}
+
+	if _, err := svc.MovePlan(ctx, chain[0].ID, date.MustParse("2026-05-11"), true); err != nil {
+		t.Fatalf("MovePlan: %v", err)
+	}
+
+	// The step that is done stays where it stands. Work that is done does not
+	// move.
+	want := []string{"2026-05-11", "2026-05-20", "2026-06-01"}
+	if got := heldPlans(t, svc, ctx, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestMovePlanWritesTheOneRowWhenTheShiftIsOff(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	ctx := signedIn(t)
+	modelID, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10", "2026-06-01")
+
+	moved, err := svc.MovePlan(ctx, chain[0].ID, date.MustParse("2026-05-11"), false)
+	if err != nil {
+		t.Fatalf("MovePlan: %v", err)
+	}
+
+	if len(moved) != 1 {
+		t.Fatalf("MovePlan moved %d steps, want 1", len(moved))
+	}
+	want := []string{"2026-05-10", "2026-05-11", "2026-06-01"}
+	if got := heldPlans(t, svc, ctx, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestMovePlanMovesTheRowAloneWhenTheDateMovesEarlier(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	ctx := signedIn(t)
+	modelID, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10", "2026-06-01")
+
+	if _, err := svc.MovePlan(ctx, chain[0].ID, date.MustParse("2026-04-20"), true); err != nil {
+		t.Fatalf("MovePlan: %v", err)
+	}
+
+	want := []string{"2026-04-20", "2026-05-10", "2026-06-01"}
+	if got := heldPlans(t, svc, ctx, modelID); !slices.Equal(got, want) {
+		t.Errorf("plan dates = %v, want %v", got, want)
+	}
+}
+
+func TestMovePlanRecordsOneTrailEntryPerMovedStep(t *testing.T) {
+	svc, rows, trail := newTestService(t)
+	ctx := signedIn(t)
+	_, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10")
+	trail.entries = nil
+
+	if _, err := svc.MovePlan(ctx, chain[0].ID, date.MustParse("2026-05-11"), true); err != nil {
+		t.Fatalf("MovePlan: %v", err)
+	}
+
+	if len(trail.entries) != 2 {
+		t.Fatalf("the trail holds %d entries, want 2: %+v", len(trail.entries), trail.entries)
+	}
+	want := []struct {
+		id       ids.ID
+		old, now string
+	}{
+		{chain[0].ID, "2026-05-01", "2026-05-11"},
+		{chain[1].ID, "2026-05-10", "2026-05-20"},
+	}
+	for i, entry := range trail.entries {
+		if entry.Entity != audit.EntityMilestone || entry.EntityID != want[i].id {
+			t.Errorf("entry %d = %s %s, want %s %s",
+				i, entry.Entity, entry.EntityID, audit.EntityMilestone, want[i].id)
+		}
+		if entry.Action != audit.ActionChanged || entry.FieldKey != FieldPlanDate {
+			t.Errorf("entry %d = %s %s, want %s %s",
+				i, entry.Action, entry.FieldKey, audit.ActionChanged, FieldPlanDate)
+		}
+		if entry.Old != want[i].old || entry.New != want[i].now {
+			t.Errorf("entry %d = %q → %q, want %q → %q",
+				i, entry.Old, entry.New, want[i].old, want[i].now)
+		}
+	}
+}
+
+func TestMovePlanWritesNothingWhenTheDateDoesNotMove(t *testing.T) {
+	svc, rows, trail := newTestService(t)
+	ctx := signedIn(t)
+	_, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10")
+	trail.entries = nil
+
+	moved, err := svc.MovePlan(ctx, chain[0].ID, chain[0].Plan, true)
+	if err != nil {
+		t.Fatalf("MovePlan: %v", err)
+	}
+	if len(moved) != 0 {
+		t.Errorf("MovePlan moved %d steps, want none", len(moved))
+	}
+	if len(trail.entries) != 0 {
+		t.Errorf("the trail holds %+v, want nothing", trail.entries)
+	}
+}
+
+func TestMovePlanNeedsAPlanDate(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	ctx := signedIn(t)
+	one := aMilestone(t, svc, rows, ctx, "2026-05-20")
+
+	_, err := svc.MovePlan(ctx, one.ID, time.Time{}, true)
+	rejects(t, err, FieldPlanDate, validate.Required)
+}
+
+func TestMovePlanReportsAMilestoneThatIsNotThere(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	ctx := signedIn(t)
+
+	_, err := svc.MovePlan(ctx, ids.MustParse("01912345-0000-7000-8000-00000000cccc"),
+		date.MustParse("2026-05-20"), true)
+	if !errors.Is(err, ErrNoMilestone) {
+		t.Errorf("MovePlan error = %v, want %v", err, ErrNoMilestone)
+	}
+}
+
+func TestMovesReadsTheShiftAndWritesNothing(t *testing.T) {
+	svc, rows, trail := newTestService(t)
+	ctx := signedIn(t)
+	modelID, chain := aChain(t, svc, rows, ctx, "2026-05-01", "2026-05-10", "2026-06-01")
+	trail.entries = nil
+
+	moves, err := svc.Moves(ctx, chain[0].ID, date.MustParse("2026-05-11"))
+	if err != nil {
+		t.Fatalf("Moves: %v", err)
+	}
+
+	if len(moves) != 3 {
+		t.Fatalf("Moves holds %d steps, want 3", len(moves))
+	}
+	// The row the user moved comes first, and every move is the same distance.
+	if moves[0].Milestone.ID != chain[0].ID {
+		t.Errorf("the first move is %s, want the step the user moved, %s",
+			moves[0].Milestone.ID, chain[0].ID)
+	}
+	for i, move := range moves {
+		if move.Days() != 10 {
+			t.Errorf("move %d = %d days, want 10", i, move.Days())
+		}
+	}
+
+	want := []string{"2026-05-01", "2026-05-10", "2026-06-01"}
+	if got := heldPlans(t, svc, ctx, modelID); !slices.Equal(got, want) {
+		t.Errorf("the preview moved the calendar to %v, want %v", got, want)
+	}
+	if len(trail.entries) != 0 {
+		t.Errorf("the preview recorded %+v, want nothing", trail.entries)
+	}
+}
