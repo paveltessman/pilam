@@ -109,3 +109,37 @@ SELECT drop.target_date
 FROM model
 JOIN drop ON drop.id = model.drop_id
 WHERE model.id = $1;
+
+-- name: ListMilestonesBySeason :many
+-- The milestone list: the active steps of the active models of one season, with
+-- the names the screen reads beside them.
+SELECT sqlc.embed(milestone),
+       milestone_type.name AS type_name,
+       model.article,
+       model.drop_id,
+       drop.name           AS drop_name
+FROM milestone
+JOIN model         ON model.id         = milestone.model_id
+JOIN drop          ON drop.id          = model.drop_id
+JOIN milestone_type ON milestone_type.id = milestone.type_id
+WHERE milestone.active
+  AND model.active
+  AND drop.season_id = sqlc.arg(season_id)::uuid
+  AND (sqlc.narg(drop_id)::uuid IS NULL OR model.drop_id     = sqlc.narg(drop_id)::uuid)
+  AND (sqlc.narg(type_id)::uuid IS NULL OR milestone.type_id = sqlc.narg(type_id)::uuid)
+ORDER BY milestone.plan_date, milestone.id;
+
+-- name: CountModelsWithoutCalendar :many
+-- The models of one season that hold no calendar, counted per drop.
+SELECT model.drop_id, drop.name AS drop_name, count(*) AS models
+FROM model
+JOIN drop ON drop.id = model.drop_id
+WHERE model.active
+  AND drop.season_id = sqlc.arg(season_id)::uuid
+  AND (sqlc.narg(drop_id)::uuid IS NULL OR model.drop_id = sqlc.narg(drop_id)::uuid)
+  AND NOT EXISTS (
+      SELECT 1 FROM milestone
+      WHERE milestone.model_id = model.id AND milestone.active
+  )
+GROUP BY model.drop_id, drop.name
+ORDER BY drop.name;

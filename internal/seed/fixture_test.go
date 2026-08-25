@@ -603,6 +603,78 @@ func (m *milestoneStore) MilestoneTarget(_ context.Context, modelID ids.ID) (tim
 	return drop.TargetDate, nil
 }
 
+// MilestoneList returns the active milestones of the active models of one
+// season, with the names the list shows. The seed writes calendars and does not
+// read the list, so this stands here to answer the port.
+func (m *milestoneStore) MilestoneList(_ context.Context, filter milestones.ListParams) ([]milestones.ListRow, error) {
+	var list []milestones.ListRow
+	for _, one := range m.rows {
+		if !one.Active || (filter.TypeID != ids.Nil && one.TypeID != filter.TypeID) {
+			continue
+		}
+		model, found := m.catalogRows.models[one.ModelID]
+		if !found || !model.Active {
+			continue
+		}
+		drop, found := m.catalogRows.drops[model.DropID]
+		switch {
+		case !found, drop.SeasonID != filter.SeasonID:
+			continue
+		case filter.DropID != ids.Nil && model.DropID != filter.DropID:
+			continue
+		}
+		list = append(list, milestones.ListRow{
+			Milestone: one,
+			TypeName:  m.types[one.TypeID].Name,
+			Article:   model.Article,
+			DropID:    drop.ID,
+			DropName:  drop.Name,
+		})
+	}
+	slices.SortFunc(list, func(a, b milestones.ListRow) int {
+		if !date.Equal(a.Plan, b.Plan) {
+			return a.Plan.Compare(b.Plan)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
+	return list, nil
+}
+
+// MilestoneWithoutCalendar counts the models that hold no active milestone, per
+// drop of one season.
+func (m *milestoneStore) MilestoneWithoutCalendar(_ context.Context, seasonID, dropID ids.ID) ([]milestones.NoCalendar, error) {
+	counts := make(map[ids.ID]int)
+	for _, model := range m.catalogRows.models {
+		drop, found := m.catalogRows.drops[model.DropID]
+		switch {
+		case !model.Active, !found, drop.SeasonID != seasonID:
+			continue
+		case dropID != ids.Nil && model.DropID != dropID:
+			continue
+		case m.holdsCalendar(model.ID):
+			continue
+		}
+		counts[model.DropID]++
+	}
+
+	out := make([]milestones.NoCalendar, 0, len(counts))
+	for id, models := range counts {
+		out = append(out, milestones.NoCalendar{DropID: id, DropName: m.catalogRows.drops[id].Name, Models: models})
+	}
+	slices.SortFunc(out, func(a, b milestones.NoCalendar) int { return strings.Compare(a.DropName, b.DropName) })
+	return out, nil
+}
+
+// holdsCalendar reports whether the model holds one active milestone or more.
+func (m *milestoneStore) holdsCalendar(modelID ids.ID) bool {
+	for _, held := range m.rows {
+		if held.ModelID == modelID && held.Active {
+			return true
+		}
+	}
+	return false
+}
+
 // The three milestone ports, each one a view of the same store.
 type (
 	typesOf     struct{ *milestoneStore }
@@ -664,4 +736,10 @@ func (c calendarOf) Update(ctx context.Context, in milestones.Milestone) error {
 }
 func (c calendarOf) Target(ctx context.Context, id ids.ID) (time.Time, error) {
 	return c.MilestoneTarget(ctx, id)
+}
+func (c calendarOf) List(ctx context.Context, f milestones.ListParams) ([]milestones.ListRow, error) {
+	return c.MilestoneList(ctx, f)
+}
+func (c calendarOf) WithoutCalendar(ctx context.Context, seasonID, dropID ids.ID) ([]milestones.NoCalendar, error) {
+	return c.MilestoneWithoutCalendar(ctx, seasonID, dropID)
 }

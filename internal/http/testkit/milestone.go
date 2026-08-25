@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/paveltessman/pilam/internal/audit"
+	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/milestones"
 	"github.com/paveltessman/pilam/internal/platform/ids"
 )
@@ -234,10 +235,16 @@ type milestoneCalendarStore struct {
 	mu      sync.Mutex
 	rows    map[ids.ID]milestones.Milestone
 	catalog *catalogStore
+	types   *milestoneTypeStore
 }
 
-func newMilestoneCalendarStore(rows *catalogStore) *milestoneCalendarStore {
-	return &milestoneCalendarStore{rows: make(map[ids.ID]milestones.Milestone), catalog: rows}
+func newMilestoneCalendarStore(rows *catalogStore, types *milestoneTypeStore) *milestoneCalendarStore {
+	store := &milestoneCalendarStore{
+		rows:    make(map[ids.ID]milestones.Milestone),
+		catalog: rows,
+		types:   types,
+	}
+	return store
 }
 
 func (s *milestoneCalendarStore) ByID(_ context.Context, id ids.ID) (milestones.Milestone, error) {
@@ -308,6 +315,114 @@ func (s *milestoneCalendarStore) Target(ctx context.Context, modelID ids.ID) (ti
 	return drop.TargetDate, nil
 }
 
+// List returns the active milestones of the active models of one season, with
+// the names the list shows. It joins the catalog rows the test wrote, the way
+// the statement behind it joins the tables.
+func (s *milestoneCalendarStore) List(ctx context.Context, filter milestones.ListParams) ([]milestones.ListRow, error) {
+	s.mu.Lock()
+	held := slices.Collect(maps.Values(s.rows))
+	s.mu.Unlock()
+
+	var list []milestones.ListRow
+	for _, one := range held {
+		if !one.Active || (filter.TypeID != ids.Nil && one.TypeID != filter.TypeID) {
+			continue
+		}
+		model, drop, found := s.modelOf(ctx, one.ModelID)
+		switch {
+		case !found, !model.Active:
+			continue
+		case drop.SeasonID != filter.SeasonID:
+			continue
+		case filter.DropID != ids.Nil && model.DropID != filter.DropID:
+			continue
+		}
+		list = append(list, milestones.ListRow{
+			Milestone: one,
+			TypeName:  s.typeName(ctx, one.TypeID),
+			Article:   model.Article,
+			DropID:    drop.ID,
+			DropName:  drop.Name,
+		})
+	}
+
+	slices.SortFunc(list, func(a, b milestones.ListRow) int {
+		if !a.Plan.Equal(b.Plan) {
+			return a.Plan.Compare(b.Plan)
+		}
+		return strings.Compare(a.ID.String(), b.ID.String())
+	})
+	return list, nil
+}
+
+// WithoutCalendar counts the models that hold no active milestone, per drop of
+// one season.
+func (s *milestoneCalendarStore) WithoutCalendar(ctx context.Context, seasonID, dropID ids.ID) ([]milestones.NoCalendar, error) {
+	active := true
+	models, err := s.catalog.modelList(ctx, catalog.ModelListParams{
+		SeasonID: seasonID,
+		DropID:   dropID,
+		Active:   &active,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	counts := make(map[ids.ID]int)
+	for _, model := range models {
+		if !s.holdsCalendar(model.ID) {
+			counts[model.DropID]++
+		}
+	}
+
+	out := make([]milestones.NoCalendar, 0, len(counts))
+	for id, models := range counts {
+		drop, err := s.catalog.dropByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, milestones.NoCalendar{DropID: id, DropName: drop.Name, Models: models})
+	}
+	slices.SortFunc(out, func(a, b milestones.NoCalendar) int { return strings.Compare(a.DropName, b.DropName) })
+	return out, nil
+}
+
+// holdsCalendar reports whether the model holds one active milestone or more.
+func (s *milestoneCalendarStore) holdsCalendar(modelID ids.ID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, held := range s.rows {
+		if held.ModelID == modelID && held.Active {
+			return true
+		}
+	}
+	return false
+}
+
+// modelOf is the model one milestone hangs on, with the drop that holds it.
+func (s *milestoneCalendarStore) modelOf(ctx context.Context, modelID ids.ID) (catalog.Model, catalog.Drop, bool) {
+	model, err := s.catalog.modelByID(ctx, modelID)
+	if err != nil {
+		return catalog.Model{}, catalog.Drop{}, false
+	}
+	drop, err := s.catalog.dropByID(ctx, model.DropID)
+	if err != nil {
+		return catalog.Model{}, catalog.Drop{}, false
+	}
+	return model, drop, true
+}
+
+// typeName is the short name of one step, and nothing at all for a type that is
+// gone.
+func (s *milestoneCalendarStore) typeName(ctx context.Context, typeID ids.ID) string {
+	milestoneType, err := s.types.ByID(ctx, typeID)
+	if err != nil {
+		return ""
+	}
+	return milestoneType.Name
+}
+
 // milestoneServiceOn returns the service the test router is wired with,
 // recording to the trail the test reads back. It reads the catalog rows given,
 // which is the same store the catalog service writes.
@@ -315,10 +430,11 @@ func milestoneServiceOn(t *testing.T, trail *Trail, rows *catalogStore) *milesto
 	t.Helper()
 
 	gen := ids.NewGenerator()
+	types := newMilestoneTypeStore()
 	store := milestones.Store{
-		Types:      newMilestoneTypeStore(),
+		Types:      types,
 		Templates:  newMilestoneTemplateStore(),
-		Milestones: newMilestoneCalendarStore(rows),
+		Milestones: newMilestoneCalendarStore(rows, types),
 		Atomic:     directAtomic{},
 	}
 	return milestones.NewService(store, gen, Clock(), audit.NewTrail(trail, Clock(), gen))

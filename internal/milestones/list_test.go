@@ -1,6 +1,7 @@
 package milestones
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -236,5 +237,124 @@ func TestListedReadsAgainstTheDayItIsGiven(t *testing.T) {
 				t.Errorf("the row reads as %q, want %q", rows[0].State, tc.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------- the service
+
+// errShaky is a store that cannot answer.
+var errShaky = errors.New("the store is down")
+
+func TestListMilestonesHandsTheFilterToTheStore(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+
+	filter := ListParams{
+		SeasonID: ids.MustParse("01912345-0000-7000-8000-000000000101"),
+		DropID:   ids.MustParse("01912345-0000-7000-8000-000000000102"),
+		TypeID:   ids.MustParse("01912345-0000-7000-8000-000000000103"),
+		States:   LateAndDue(),
+		Search:   "art",
+	}
+	if _, err := svc.ListMilestones(signedIn(t), filter); err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+
+	// The season, the drop and the type are what the store narrows on. The
+	// state and the search run in this package, and the store sees them too
+	// because the filter travels whole.
+	if rows.asked.SeasonID != filter.SeasonID || rows.asked.DropID != filter.DropID {
+		t.Errorf("the store was asked for season %s and drop %s, want %s and %s",
+			rows.asked.SeasonID, rows.asked.DropID, filter.SeasonID, filter.DropID)
+	}
+	if rows.asked.TypeID != filter.TypeID {
+		t.Errorf("the store was asked for type %s, want %s", rows.asked.TypeID, filter.TypeID)
+	}
+}
+
+// The service reads the state against the current business day, which is the
+// one place the clock is read.
+func TestListMilestonesReadsTheStateAgainstTheBusinessDay(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+
+	// testNow stands on 2026-08-19.
+	rows.list = []ListRow{
+		listed(1, "late", "2026-08-18", "2026-08-18"),
+		listed(2, "due", "2026-08-21", "2026-08-21"),
+		listed(3, "planned", "2026-10-01", "2026-10-01"),
+	}
+
+	held, err := svc.ListMilestones(signedIn(t), ListParams{})
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+
+	want := map[string]State{"late": StateLate, "due": StateDue, "planned": StatePlanned}
+	if len(held) != len(want) {
+		t.Fatalf("the list holds %d rows, want %d", len(held), len(want))
+	}
+	for _, row := range held {
+		if row.State != want[row.Article] {
+			t.Errorf("%s reads as %q, want %q", row.Article, row.State, want[row.Article])
+		}
+	}
+}
+
+func TestListMilestonesKeepsAndOrdersWhatTheStoreAnswers(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+
+	rows.list = []ListRow{
+		listed(1, "ART-1 moved 3", "2026-08-10", "2026-08-13"),
+		listed(2, "ART-2 moved 21", "2026-08-10", "2026-08-31"),
+		listed(3, "SKI-1 moved 10", "2026-08-10", "2026-08-20"),
+	}
+
+	held, err := svc.ListMilestones(signedIn(t), ListParams{Search: "art"})
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+
+	want := []string{"ART-2 moved 21", "ART-1 moved 3"}
+	if got := articles(held); !slices.Equal(got, want) {
+		t.Errorf("the list holds %v, want %v", got, want)
+	}
+}
+
+func TestListMilestonesReportsAFailedRead(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	rows.failWith = errShaky
+
+	if _, err := svc.ListMilestones(signedIn(t), ListParams{}); !errors.Is(err, errShaky) {
+		t.Errorf("ListMilestones error = %v, want %v", err, errShaky)
+	}
+}
+
+func TestModelsWithoutCalendarCountsWhatTheStoreAnswers(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+
+	seasonID := ids.MustParse("01912345-0000-7000-8000-000000000101")
+	dropID := ids.MustParse("01912345-0000-7000-8000-000000000102")
+	rows.counts = []NoCalendar{{DropID: dropID, DropName: "Drop 1", Models: 12}}
+
+	counts, err := svc.ModelsWithoutCalendar(signedIn(t), seasonID, dropID)
+	if err != nil {
+		t.Fatalf("ModelsWithoutCalendar: %v", err)
+	}
+
+	if !slices.Equal(counts, rows.counts) {
+		t.Errorf("the count holds %v, want %v", counts, rows.counts)
+	}
+	if rows.asked.SeasonID != seasonID || rows.asked.DropID != dropID {
+		t.Errorf("the store was asked for season %s and drop %s, want %s and %s",
+			rows.asked.SeasonID, rows.asked.DropID, seasonID, dropID)
+	}
+}
+
+func TestModelsWithoutCalendarReportsAFailedRead(t *testing.T) {
+	svc, rows, _ := newTestService(t)
+	rows.failWith = errShaky
+
+	_, err := svc.ModelsWithoutCalendar(signedIn(t), ids.Nil, ids.Nil)
+	if !errors.Is(err, errShaky) {
+		t.Errorf("ModelsWithoutCalendar error = %v, want %v", err, errShaky)
 	}
 }

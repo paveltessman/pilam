@@ -1,6 +1,8 @@
 package milestones
 
 import (
+	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -50,6 +52,26 @@ type NoCalendar struct {
 	DropID   ids.ID
 	DropName string
 	Models   int
+}
+
+// ListMilestones is the milestone list: the steps of one season the filter
+// keeps, each with the state it holds today, worst slip first.
+func (s *Service) ListMilestones(ctx context.Context, filter ListParams) ([]ListRow, error) {
+	held, err := s.milestones.List(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("milestone: listing the milestones of season %s: %w", filter.SeasonID, err)
+	}
+	return Listed(held, filter, s.clock.Today()), nil
+}
+
+// ModelsWithoutCalendar counts the models of one season that hold no calendar,
+// per drop. The zero drop identifier counts every drop of the season.
+func (s *Service) ModelsWithoutCalendar(ctx context.Context, seasonID, dropID ids.ID) ([]NoCalendar, error) {
+	counts, err := s.milestones.WithoutCalendar(ctx, seasonID, dropID)
+	if err != nil {
+		return nil, fmt.Errorf("milestone: counting the models of season %s with no calendar: %w", seasonID, err)
+	}
+	return counts, nil
 }
 
 // Listed is the rule of the list: the rows the filter keeps, each with the
