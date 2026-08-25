@@ -51,4 +51,16 @@ type MilestonesStore interface {
 	// Target returns the target date of the drop that holds the model. It
 	// returns ErrNoModel when there is no such model.
 	Target(ctx context.Context, modelID ids.ID) (time.Time, error)
+
+	// List returns the active milestones of the active models of one season,
+	// with the names the list shows beside them.
+	//
+	// It answers the season, the drop and the type of the filter, and nothing
+	// else. The state and the search are rules of this package, and Listed runs
+	// them over what this returns.
+	List(ctx context.Context, filter ListParams) ([]ListRow, error)
+
+	// WithoutCalendar counts the models that hold no active milestone, per drop
+	// of one season. The zero drop identifier counts every drop of the season.
+	WithoutCalendar(ctx context.Context, seasonID, dropID ids.ID) ([]NoCalendar, error)
 }

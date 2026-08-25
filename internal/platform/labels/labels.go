@@ -3,10 +3,9 @@ package labels
 
 import "github.com/paveltessman/pilam/internal/platform/password"
 
-// The nav of the app header. The model list carries its own title there, so it
-// has no separate name of its own.
+// The nav of the app header. The model list and the milestone list carry their
+// own titles there, so neither has a separate name of its own.
 const (
-	NavExceptions = "Отставания"
 	NavSeasons    = "Сезоны"
 	NavMilestones = "Этапы"
 	NavDrops      = "Дропы"
@@ -315,6 +314,31 @@ const (
 	MilestonesMoveFrom  = "Было"
 	MilestonesMoveTo    = "Станет"
 	MilestonesMoveShift = "Сдвинуть следующие этапы"
+)
+
+// The milestone list: the late work of a whole season on one screen. It is the
+// one milestone screen a member reaches.
+const (
+	MilestoneListTitle    = "Отставания"
+	MilestoneListHint     = "Этапы сезона: сначала те, что отстают сильнее."
+	MilestoneListEmpty    = "В этом сезоне пока нет этапов."
+	MilestoneListNoMatch  = "По этим фильтрам ничего не найдено."
+	MilestoneListNoSeason = "Сначала создайте сезон: список этапов существует внутри сезона."
+
+	// The controls above the list. The other three reuse the words of the model
+	// list and of the calendar section.
+	MilestoneListStateOpen  = "Просроченные и ближайшие"
+	MilestoneListSearch     = "Поиск по артикулу"
+	MilestoneListSearchHint = "Артикул"
+	MilestoneListGroup      = "Группировка"
+	MilestoneListGroupNone  = "Без группировки"
+	MilestoneListGroupDrop  = "По дропу"
+	MilestoneListGroupType  = "По этапу"
+
+	// The models of the season that hold no critical path. Such a model never
+	// reads as late, so this is the only place it appears.
+	MilestoneListNoCalendar     = "Модели без критического пути"
+	MilestoneListNoCalendarHint = "У этих моделей нет этапов, поэтому в списке их не видно."
 )
 
 // The actions of the calendar section.

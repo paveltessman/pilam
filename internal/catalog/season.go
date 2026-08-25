@@ -139,3 +139,51 @@ func (s *Service) UpdateSeason(ctx context.Context, seasonID ids.ID, in SeasonUp
 	})
 	return err
 }
+
+// CurrentSeason is the season a screen opens on: the one the brand works in
+// today.
+//
+// It is the active season with the latest start date that is not after today. A
+// brand whose active seasons all start later takes the earliest of them,
+// because that is the one it works towards. A brand with no active season at
+// all takes the newest season it holds.
+//
+// It answers the zero season for no season at all.
+func CurrentSeason(seasons []Season, today time.Time) Season {
+	var started, coming, newest Season
+	for _, season := range seasons {
+		if newest.ID == ids.Nil || startOrder(season, newest) > 0 {
+			newest = season
+		}
+		if !season.Active {
+			continue
+		}
+		if date.After(season.StartDate, today) {
+			if coming.ID == ids.Nil || startOrder(season, coming) < 0 {
+				coming = season
+			}
+			continue
+		}
+		if started.ID == ids.Nil || startOrder(season, started) > 0 {
+			started = season
+		}
+	}
+
+	switch {
+	case started.ID != ids.Nil:
+		return started
+	case coming.ID != ids.Nil:
+		return coming
+	default:
+		return newest
+	}
+}
+
+// startOrder compares two seasons the way the list holds them: by start date,
+// and then by name.
+func startOrder(a, b Season) int {
+	if !date.Equal(a.StartDate, b.StartDate) {
+		return a.StartDate.Compare(b.StartDate)
+	}
+	return strings.Compare(a.Name, b.Name)
+}

@@ -115,6 +115,54 @@ func (m *Milestones) Target(ctx context.Context, modelID ids.ID) (time.Time, err
 	return target, nil
 }
 
+// List returns the active milestones of the active models of one season, with
+// the names the list shows beside them.
+func (m *Milestones) List(ctx context.Context, filter milestones.ListParams) ([]milestones.ListRow, error) {
+	params := sqlc.ListMilestonesBySeasonParams{
+		SeasonID: filter.SeasonID,
+		DropID:   identifier(filter.DropID),
+		TypeID:   identifier(filter.TypeID),
+	}
+
+	rows, err := m.db.queries(ctx).ListMilestonesBySeason(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: listing the milestones of season %s: %w", filter.SeasonID, err)
+	}
+
+	list := make([]milestones.ListRow, len(rows))
+	for i, row := range rows {
+		list[i] = milestones.ListRow{
+			Milestone: milestone(row.Milestone),
+			TypeName:  row.TypeName,
+			Article:   row.Article,
+			DropID:    row.DropID,
+			DropName:  row.DropName,
+		}
+	}
+	return list, nil
+}
+
+// WithoutCalendar counts the models that hold no active milestone, per drop of
+// one season.
+func (m *Milestones) WithoutCalendar(ctx context.Context, seasonID, dropID ids.ID) ([]milestones.NoCalendar, error) {
+	params := sqlc.CountModelsWithoutCalendarParams{SeasonID: seasonID, DropID: identifier(dropID)}
+
+	rows, err := m.db.queries(ctx).CountModelsWithoutCalendar(ctx, params)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: counting the models of season %s with no calendar: %w", seasonID, err)
+	}
+
+	counts := make([]milestones.NoCalendar, len(rows))
+	for i, row := range rows {
+		counts[i] = milestones.NoCalendar{
+			DropID:   row.DropID,
+			DropName: row.DropName,
+			Models:   int(row.Models),
+		}
+	}
+	return counts, nil
+}
+
 func milestone(row sqlc.Milestone) milestones.Milestone {
 	one := milestones.Milestone{
 		ID:       row.ID,

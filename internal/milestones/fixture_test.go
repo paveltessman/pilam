@@ -32,7 +32,15 @@ type store struct {
 
 	// targets is the target date of the drop of every model the test wrote. A
 	// model that is not on it is a model that is not there.
-	targets  map[ids.ID]time.Time
+	targets map[ids.ID]time.Time
+
+	// list and counts are what the two reads of the milestone list answer. The
+	// statement behind them narrows the rows, and asked is what it was asked
+	// for, so a test reads the filter the service handed over.
+	list   []ListRow
+	counts []NoCalendar
+	asked  ListParams
+
 	failWith error
 }
 
@@ -304,6 +312,22 @@ func (s *store) MilestoneTarget(_ context.Context, modelID ids.ID) (time.Time, e
 	return target, nil
 }
 
+func (s *store) MilestoneList(_ context.Context, filter ListParams) ([]ListRow, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+	s.asked = filter
+	return s.list, nil
+}
+
+func (s *store) MilestoneWithoutCalendar(_ context.Context, seasonID, dropID ids.ID) ([]NoCalendar, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+	s.asked = ListParams{SeasonID: seasonID, DropID: dropID}
+	return s.counts, nil
+}
+
 // The ports, each one a view of the same store.
 type typesOf struct{ *store }
 
@@ -359,6 +383,12 @@ func (m milestonesOf) Update(ctx context.Context, in Milestone) error {
 }
 func (m milestonesOf) Target(ctx context.Context, modelID ids.ID) (time.Time, error) {
 	return m.MilestoneTarget(ctx, modelID)
+}
+func (m milestonesOf) List(ctx context.Context, filter ListParams) ([]ListRow, error) {
+	return m.MilestoneList(ctx, filter)
+}
+func (m milestonesOf) WithoutCalendar(ctx context.Context, seasonID, dropID ids.ID) ([]NoCalendar, error) {
+	return m.MilestoneWithoutCalendar(ctx, seasonID, dropID)
 }
 
 // directAtomic runs the unit of work without a transaction. The domain tests do

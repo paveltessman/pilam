@@ -1,0 +1,476 @@
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/catalog"
+	"github.com/paveltessman/pilam/internal/http/paths"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
+	shared "github.com/paveltessman/pilam/internal/http/shared/views"
+	"github.com/paveltessman/pilam/internal/milestones"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
+
+// The controls above the milestone list. Each one is a query parameter, so the
+// screen is a link a user can keep.
+const (
+	FieldListSeason = "season_id"
+	FieldListDrop   = "drop_id"
+	FieldListType   = "type_id"
+	FieldListState  = "state"
+	FieldListGroup  = "group"
+	FieldListSearch = "q"
+)
+
+// What the state control offers. The empty value is the list as it opens: the
+// work that runs late, and the work that comes due.
+const (
+	StateOpen    = ""
+	StateAny     = "all"
+	StateLate    = string(milestones.StateLate)
+	StateDue     = string(milestones.StateDue)
+	StatePlanned = string(milestones.StatePlanned)
+	StateDone    = string(milestones.StateDone)
+)
+
+// What the grouping control offers.
+const (
+	GroupNone = ""
+	GroupDrop = "drop"
+	GroupType = "type"
+)
+
+// listResults is the element the controls swap. The screen renders it, and a
+// filter request answers with what goes inside it.
+const listResults = "milestone-list-results"
+
+// listStates is what the state control offers, in the order it offers them. The
+// list opens on the first one.
+var listStates = []shared.SelectOption{
+	{Value: StateOpen, Label: labels.MilestoneListStateOpen},
+	{Value: StateAny, Label: labels.FilterAny},
+	{Value: StateLate, Label: labels.MilestonesStateLate},
+	{Value: StateDue, Label: labels.MilestonesStateDue},
+	{Value: StatePlanned, Label: labels.MilestonesStatePlanned},
+	{Value: StateDone, Label: labels.MilestonesStateDone},
+}
+
+// listGroups is what the grouping control offers.
+var listGroups = []shared.SelectOption{
+	{Value: GroupNone, Label: labels.MilestoneListGroupNone},
+	{Value: GroupDrop, Label: labels.MilestoneListGroupDrop},
+	{Value: GroupType, Label: labels.MilestoneListGroupType},
+}
+
+// ChosenState is the state choice the control holds. A value the control does
+// not offer comes back as the choice the list opens on.
+func ChosenState(value string) string { return chosen(listStates, value, StateOpen) }
+
+// ChosenGroup is the grouping the control holds. A value the control does not
+// offer comes back as no grouping at all.
+func ChosenGroup(value string) string { return chosen(listGroups, value, GroupNone) }
+
+// chosen is the value when the control offers it, and fallback otherwise.
+func chosen(choices []shared.SelectOption, value, fallback string) string {
+	for _, choice := range choices {
+		if choice.Value == value {
+			return value
+		}
+	}
+	return fallback
+}
+
+// StatesOf is the states one choice of the state control names. The choice that
+// keeps every row names none of them.
+func StatesOf(choice string) []milestones.State {
+	switch choice {
+	case StateOpen:
+		return milestones.LateAndDue()
+	case StateLate, StateDue, StatePlanned, StateDone:
+		return []milestones.State{milestones.State(choice)}
+	default:
+		return nil
+	}
+}
+
+// MilestoneListPage is the milestone list: the steps of one season, worst slip
+// first, under the controls that narrow them.
+type MilestoneListPage struct {
+	Chrome shared.Chrome
+	Filter MilestoneListFilter
+
+	// Groups holds one group per drop or per type, and one group with no
+	// heading while the list is not grouped.
+	Groups []MilestoneListGroup
+
+	// NoCalendar counts the models of the season that hold no critical path,
+	// per drop. Such a model never reads as late, so this is where it appears.
+	NoCalendar []MilestoneListCount
+
+	// Rows is how many steps the list holds, over every group.
+	Rows int
+}
+
+// EmptyText tells the two empty lists apart: a season that holds no steps, and
+// a filter that keeps none of them.
+func (p MilestoneListPage) EmptyText() string {
+	if p.Filter.Set() {
+		return labels.MilestoneListNoMatch
+	}
+	return labels.MilestoneListEmpty
+}
+
+// MilestoneListFilter is what the controls hold, and the choices they offer.
+// Every value is the wire form, so it goes straight back into the control it
+// came from.
+type MilestoneListFilter struct {
+	SeasonID string
+	DropID   string
+	TypeID   string
+	State    string
+	Group    string
+	Search   string
+
+	// The choices. Drops holds the drops of the chosen season, and Types holds
+	// every step, retired ones too, because a retired step keeps its rows.
+	Seasons []catalog.Season
+	Drops   []catalog.Drop
+	Types   []milestones.Type
+}
+
+// Set reports whether any control keeps rows out of the list. The season is not
+// one of them: it is the scope of the screen rather than a filter on it.
+func (f MilestoneListFilter) Set() bool {
+	return f.DropID != "" || f.TypeID != "" || f.State != StateOpen || f.Search != ""
+}
+
+// seasonChoices is the season control. It states which season the screen stands
+// on, and it offers every season the brand holds.
+func (f MilestoneListFilter) seasonChoices() []shared.SelectOption {
+	choices := make([]shared.SelectOption, 0, len(f.Seasons))
+	for _, season := range f.Seasons {
+		choices = append(choices, shared.SelectOption{Value: season.ID.String(), Label: season.Name})
+	}
+	return choices
+}
+
+// dropChoices is the drop control: the drops of the chosen season, over the
+// choice that keeps them all.
+func (f MilestoneListFilter) dropChoices() []shared.SelectOption {
+	choices := make([]shared.SelectOption, 0, len(f.Drops)+1)
+	choices = append(choices, shared.SelectOption{Value: "", Label: labels.FilterAny})
+	for _, drop := range f.Drops {
+		choices = append(choices, shared.SelectOption{Value: drop.ID.String(), Label: drop.Name})
+	}
+	return choices
+}
+
+// typeChoices is the step control. A retired step keeps the rows it already
+// holds, so it stays on this list even though it left the pickers.
+func (f MilestoneListFilter) typeChoices() []shared.SelectOption {
+	choices := make([]shared.SelectOption, 0, len(f.Types)+1)
+	choices = append(choices, shared.SelectOption{Value: "", Label: labels.FilterAny})
+	for _, milestoneType := range f.Types {
+		choices = append(choices, shared.SelectOption{Value: milestoneType.ID.String(), Label: milestoneType.Name})
+	}
+	return choices
+}
+
+// stateChoices is the state control, and groupChoices is the grouping control.
+func (f MilestoneListFilter) stateChoices() []shared.SelectOption { return listStates }
+func (f MilestoneListFilter) groupChoices() []shared.SelectOption { return listGroups }
+
+// MilestoneListGroup is a heading and the rows under it. A list that is not
+// grouped holds one group with no heading.
+type MilestoneListGroup struct {
+	Name string
+	Rows []MilestoneListRow
+}
+
+// MilestoneListCount is one drop of the season, with the count of the models it
+// holds that carry no critical path.
+type MilestoneListCount struct {
+	Drop   string
+	Models string
+}
+
+// MilestoneListRow is one step of the list. Every value is already rendered:
+// the row states what the user reads and where it leads.
+type MilestoneListRow struct {
+	ModelID string
+	Article string
+	Drop    string
+	Type    string
+
+	// Plan and Fact are the display form. Fact is empty for a step that nobody
+	// stamped yet.
+	Plan string
+	Fact string
+
+	// State is the word the row reads as today, and Late marks the row the list
+	// calls out.
+	State string
+	Late  bool
+
+	// Slip is the days the plan moved from the baseline, and it is empty while
+	// the plan stands on the baseline. OnTime marks a done step that landed no
+	// later than the baseline.
+	Slip   string
+	OnTime bool
+}
+
+// Href is the card of the model the step belongs to.
+func (r MilestoneListRow) Href() string { return paths.Models + "/" + r.ModelID }
+
+// NewMilestoneList builds the groups of the list. The rows arrive worst slip
+// first, and grouping keeps that order inside every group.
+//
+// A group stands where its first row stands, so the drop that holds the worst
+// step is the drop the screen opens on.
+func NewMilestoneList(rows []milestones.ListRow, group string) []MilestoneListGroup {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	var groups []MilestoneListGroup
+	at := make(map[string]int, len(rows))
+	for _, row := range rows {
+		name := groupName(row, group)
+		place, held := at[name]
+		if !held {
+			place = len(groups)
+			at[name] = place
+			groups = append(groups, MilestoneListGroup{Name: name})
+		}
+		groups[place].Rows = append(groups[place].Rows, newMilestoneListRow(row))
+	}
+	return groups
+}
+
+// groupName is the heading one row falls under, and nothing at all while the
+// list is not grouped.
+func groupName(row milestones.ListRow, group string) string {
+	switch group {
+	case GroupDrop:
+		return row.DropName
+	case GroupType:
+		return row.TypeName
+	default:
+		return ""
+	}
+}
+
+func newMilestoneListRow(row milestones.ListRow) MilestoneListRow {
+	rendered := MilestoneListRow{
+		ModelID: row.ModelID.String(),
+		Article: row.Article,
+		Drop:    row.DropName,
+		Type:    row.TypeName,
+		Plan:    labels.Date(row.Plan),
+		State:   shared.MilestoneState(row.State),
+		Late:    row.State == milestones.StateLate,
+		OnTime:  row.OnTime(),
+	}
+	if row.Done() {
+		rendered.Fact = labels.Date(row.Fact)
+	}
+	if slip := row.Slip(); slip != 0 {
+		rendered.Slip = labels.Delta(slip)
+	}
+	return rendered
+}
+
+// NewMilestoneListCounts renders the models of the season that hold no critical
+// path, per drop.
+func NewMilestoneListCounts(counts []milestones.NoCalendar) []MilestoneListCount {
+	rendered := make([]MilestoneListCount, len(counts))
+	for i, count := range counts {
+		rendered[i] = MilestoneListCount{Drop: count.DropName, Models: labels.Styles(count.Models)}
+	}
+	return rendered
+}
+
+templ MilestoneList(page MilestoneListPage) {
+	{{ page.Chrome.Current = labels.MilestoneListTitle }}
+	@shared.Page(labels.MilestoneListTitle, page.Chrome) {
+		<main class="mx-auto w-full max-w-5xl px-6 py-10">
+			<h1 class="mb-1 text-2xl font-semibold tracking-tight">{ labels.MilestoneListTitle }</h1>
+			<p class="mb-6 text-sm text-muted-foreground">{ labels.MilestoneListHint }</p>
+			if len(page.Filter.Seasons) == 0 {
+				@shared.EmptyPanel(labels.MilestoneListNoSeason)
+			} else {
+				@milestoneListFilters(page.Filter)
+				<div id={ listResults }>
+					@MilestoneListResults(page)
+				</div>
+			}
+		</main>
+	}
+}
+
+// milestoneListFilters is the controls above the list. htmx swaps the table
+// when a control moves. Without htmx the form still works: it submits the same
+// GET the links use, and the page comes back filtered.
+templ milestoneListFilters(filter MilestoneListFilter) {
+	<form
+		method="get"
+		action={ templ.SafeURL(paths.MilestoneList) }
+		class="mb-4 flex flex-wrap items-end gap-3"
+		hx-get={ paths.MilestoneList }
+		hx-trigger="change, submit, input changed delay:250ms from:input[type='search']"
+		hx-target={ "#" + listResults }
+		hx-swap="innerHTML"
+		hx-push-url="true"
+	>
+		<div class="min-w-36 flex-1">
+			@shared.FormField(shared.FieldProps{Name: FieldListSeason, Label: labels.ModelsSeason}) {
+				@shared.SelectBox(FieldListSeason, filter.seasonChoices(), filter.SeasonID, false)
+			}
+		</div>
+		<div class="min-w-36 flex-1">
+			@shared.FormField(shared.FieldProps{Name: FieldListDrop, Label: labels.ModelsDrop}) {
+				@shared.SelectBox(FieldListDrop, filter.dropChoices(), filter.DropID, false)
+			}
+		</div>
+		<div class="min-w-36 flex-1">
+			@shared.FormField(shared.FieldProps{Name: FieldListType, Label: labels.MilestonesStep}) {
+				@shared.SelectBox(FieldListType, filter.typeChoices(), filter.TypeID, false)
+			}
+		</div>
+		<div class="min-w-36 flex-1">
+			@shared.FormField(shared.FieldProps{Name: FieldListState, Label: labels.MilestonesState}) {
+				@shared.SelectBox(FieldListState, filter.stateChoices(), filter.State, false)
+			}
+		</div>
+		<div class="min-w-36 flex-1">
+			@shared.FormField(shared.FieldProps{Name: FieldListGroup, Label: labels.MilestoneListGroup}) {
+				@shared.SelectBox(FieldListGroup, filter.groupChoices(), filter.Group, false)
+			}
+		</div>
+		<div class="min-w-48 flex-1">
+			@shared.FormField(shared.FieldProps{Name: FieldListSearch, Label: labels.MilestoneListSearch}) {
+				@input.Input(input.Props{
+					ID:          FieldListSearch,
+					Name:        FieldListSearch,
+					Type:        input.TypeSearch,
+					Value:       filter.Search,
+					Placeholder: labels.MilestoneListSearchHint,
+					Attributes:  templ.Attributes{"aria-label": labels.MilestoneListSearch, "autocomplete": "off"},
+				})
+			}
+		</div>
+		@button.Button(button.Props{Type: button.TypeSubmit, Variant: button.VariantOutline, Size: button.SizeSm}) {
+			{ labels.ActionFilter }
+		}
+	</form>
+}
+
+// MilestoneListResults is the list alone: the count of the models with no
+// critical path, and the tables under it. The screen renders it inside the
+// page, and a filter request answers with it and nothing else.
+templ MilestoneListResults(page MilestoneListPage) {
+	@milestoneListNoCalendar(page.NoCalendar)
+	if page.Rows == 0 {
+		@shared.EmptyPanel(page.EmptyText())
+	} else {
+		for _, group := range page.Groups {
+			@milestoneListGroup(group)
+		}
+	}
+}
+
+// milestoneListNoCalendar is the models of the season the list cannot show. A
+// model with no critical path never reads as late, so it is counted here.
+templ milestoneListNoCalendar(counts []MilestoneListCount) {
+	if len(counts) > 0 {
+		<div role="status" class="mb-4 rounded-lg border border-primary/50 bg-primary/5 p-4">
+			<h2 class="mb-1 font-medium">{ labels.MilestoneListNoCalendar }</h2>
+			<p class="mb-2 text-sm text-muted-foreground">{ labels.MilestoneListNoCalendarHint }</p>
+			<ul class="space-y-1 text-sm">
+				for _, count := range counts {
+					<li>
+						<span class="font-medium">{ count.Drop }</span>
+						<span class="text-muted-foreground">{ " — " + count.Models }</span>
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}
+
+// milestoneListGroup is one table of the list. A list that is not grouped holds
+// one of them, and it carries no heading.
+templ milestoneListGroup(group MilestoneListGroup) {
+	<section class="mb-6 last:mb-0">
+		if group.Name != "" {
+			<h2 class="mb-2 text-sm font-medium">
+				{ group.Name }
+				<span class="text-muted-foreground">{ " — " + labels.Number(len(group.Rows)) }</span>
+			</h2>
+		}
+		<div class="overflow-x-auto rounded-lg border">
+			<table class="w-full text-sm">
+				<thead class="border-b bg-muted/50 text-left text-muted-foreground">
+					<tr>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.ModelsArticle }</th>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.ModelsDrop }</th>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesStep }</th>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesPlan }</th>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesFact }</th>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesState }</th>
+						<th scope="col" class="px-3 py-3 font-medium">{ labels.MilestonesSlip }</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, row := range group.Rows {
+						@milestoneListRow(row)
+					}
+				</tbody>
+			</table>
+		</div>
+	</section>
+}
+
+// milestoneListRow is one step. A late row carries the marker of the list: the
+// row is tinted, and the state reads in the colour of a refusal.
+templ milestoneListRow(row MilestoneListRow) {
+	<tr
+		if row.Late {
+			class="border-b bg-destructive/5 last:border-0"
+		} else {
+			class="border-b last:border-0"
+		}
+	>
+		<td class="px-3 py-3">
+			<a href={ templ.SafeURL(row.Href()) } class="font-medium underline-offset-4 hover:underline">
+				{ row.Article }
+			</a>
+		</td>
+		<td class="px-3 py-3">{ row.Drop }</td>
+		<td class="px-3 py-3">{ row.Type }</td>
+		<td class="px-3 py-3 whitespace-nowrap">{ row.Plan }</td>
+		<td class="px-3 py-3 whitespace-nowrap text-muted-foreground">
+			if row.Fact == "" {
+				{ labels.Empty }
+			} else {
+				{ row.Fact }
+			}
+		</td>
+		<td class="px-3 py-3 whitespace-nowrap">
+			if row.Late {
+				<span class="font-medium text-destructive">{ row.State }</span>
+			} else {
+				<span class="text-muted-foreground">{ row.State }</span>
+			}
+			if row.OnTime {
+				<span class="block text-xs text-muted-foreground">{ labels.MilestonesOnTime }</span>
+			}
+		</td>
+		<td class="px-3 py-3 whitespace-nowrap">
+			if row.Slip == "" {
+				<span class="text-muted-foreground">{ labels.Empty }</span>
+			} else {
+				<span class="text-destructive">{ row.Slip }</span>
+			}
+		</td>
+	</tr>
+}
