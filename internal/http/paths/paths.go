@@ -22,12 +22,15 @@ const Root = "/{$}"
 
 // The catalog screens.
 const (
-	Models      = "/models"
-	ModelNew    = Models + "/new"
-	Model       = Models + "/{id}"
-	ModelPhotos = Model + "/photos"
-	ModelOrder  = ModelPhotos + "/order"
-	ModelPhoto  = ModelPhotos + "/{photoID}/remove"
+	Models   = "/models"
+	ModelNew = Models + "/new"
+	Model    = Models + "/{id}"
+
+	ModelEdit       = Model + "/edit"
+	ModelPhotos     = Model + "/photos"
+	ModelPhotosEdit = ModelPhotos + "/edit"
+	ModelOrder      = ModelPhotos + "/order"
+	ModelPhoto      = ModelPhotos + "/{photoID}/remove"
 
 	// The calendar section of the model card. A milestone carries no screen of
 	// its own: every one of these posts back to the card.

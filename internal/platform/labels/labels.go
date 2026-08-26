@@ -36,6 +36,7 @@ const (
 	ActionResetPasswd      = "Сбросить пароль"
 	ActionBackToList       = "Назад к списку"
 	ActionClose            = "Закрыть"
+	ActionEdit             = "Изменить"
 )
 
 // Common  strings that are used across ddifferent screens.
@@ -48,6 +49,9 @@ const (
 
 	// The choice a filter offers for "do not filter on this at all".
 	FilterAny = "Все"
+
+	// What stands between a name and the value that narrows it: "D2 · 01.10.2026".
+	Separator = " · "
 )
 
 // The audit trail every card carries: the heading, the columns, and the words
@@ -181,8 +185,18 @@ const (
 	ModelsArticleHint = "Номер артикула."
 	ModelsDropHint    = "Дроп, в котором выходит модель."
 	ModelsNoDrop      = "Сначала создайте сезон и дроп: модель существует внутри дропа."
-	ModelsSpineFixed  = "Модель"
 	ModelsFilterState = "Состояние"
+
+	// The dialog that edits the header of the card.
+	ModelsHeaderHint = "Артикул и состояние. Сезон и дроп у модели не меняются."
+
+	// The card that says which step the model comes to next. %s of ModelsNextIn
+	// is a count of days.
+	ModelsNext          = "Ближайший этап"
+	ModelsNextAllClosed = "Все этапы закрыты"
+	ModelsNextLate      = "просрочен"
+	ModelsNextToday     = "сегодня"
+	ModelsNextIn        = "через %s"
 
 	// The critical path control of the create screen. It builds the calendar of
 	// the new model, and it offers the choice that builds none.
@@ -194,14 +208,14 @@ const (
 const (
 	ModelsPhotos      = "Фотографии"
 	ModelsPhotosEmpty = "Фотографий пока нет."
-	ModelsPhotosHint  = "Первое фото — обложка модели."
 	ModelsPhotoCover  = "Обложка"
 	ModelsPhotoOf     = "Фото модели"
 	ModelsPhotoUpload = "Выберите изображения"
 
-	ActionPhotoEarlier = "Сдвинуть влево"
-	ActionPhotoLater   = "Сдвинуть вправо"
-	ActionPhotoRemove  = "Удалить"
+	ActionManagePhotos    = "Изменить"
+	ModelsPhotosCoverHint = "Верхнее фото будет обложкой модели."
+
+	ActionPhotoRemove = "Удалить"
 
 	// What a refused upload or a refused reorder reports.
 	ModelsPhotoNone     = "Выберите хотя бы один файл."

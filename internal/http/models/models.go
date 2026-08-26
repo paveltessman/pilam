@@ -227,6 +227,52 @@ func Show(
 	return handler
 }
 
+// ShowEdit answers with the dialog that edits the header of the card.
+func ShowEdit(catalogSvc *catalog.Service) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		model, drop, season, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		card := views.ModelCard{
+			ModelID: model.ID.String(),
+			Article: model.Article,
+			Active:  model.Active,
+			Season:  season,
+			Drop:    drop,
+		}
+		shared.Render(w, r, http.StatusOK, views.ModelHeaderDialog(card, nil))
+	}
+	return handler
+}
+
+// ShowPhotosEdit answers with the dialog that manages the photo strip.
+func ShowPhotosEdit(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		model, _, _, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		photos, err := catalogSvc.ListPhotos(ctx, model.ID)
+		if err != nil {
+			logging.FromContext(ctx).Error("listing the photos of a model failed",
+				"model", model.ID, "err", err)
+			shared.WriteServerError(w)
+			return
+		}
+
+		card := views.ModelCard{
+			ModelID: model.ID.String(),
+			Article: model.Article,
+			Photos:  views.NewModelStrip(photos, store.URL),
+		}
+		shared.Render(w, r, http.StatusOK, views.ModelPhotosDialog(card))
+	}
+	return handler
+}
+
 // Save writes the article and the active flag.
 func Save(
 	catalogSvc *catalog.Service,
@@ -270,6 +316,7 @@ func Save(
 		logger.Info("model update rejected", "model", model.ID, "reason", errs)
 		card.Article = article
 		card.Errors = errs
+		card.Open = views.DialogHeader
 		shared.Render(w, r, http.StatusUnprocessableEntity, views.Model(card))
 	}
 	return handler
@@ -459,6 +506,7 @@ func refusePhotos(
 		return
 	}
 	card.Alert = alert
+	card.Open = views.DialogPhotos
 	shared.Render(w, r, http.StatusUnprocessableEntity, views.Model(card))
 }
 

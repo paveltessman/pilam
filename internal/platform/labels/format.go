@@ -125,6 +125,10 @@ func Count(n int, one, few, many string) string {
 	return Number(n) + nbsp + Plural(n, one, few, many)
 }
 
+// Counted names a part of a screen and how many rows it holds:
+// Counted(AuditTitle, 5) is "История изменений (5)".
+func Counted(text string, n int) string { return text + nbsp + "(" + Number(n) + ")" }
+
 // Chars counts the characters of a length rule, in a message and in the hint
 // that states the rule before the user meets it.
 func Chars(n int) string { return Count(n, "символ", "символа", "символов") }

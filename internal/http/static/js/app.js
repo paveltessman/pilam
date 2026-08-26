@@ -31,6 +31,12 @@
 
   document.addEventListener("htmx:afterSwap", (event) => opened(event.target));
 
+  // A dialog the server rendered with the page opens as soon as the page is
+  // there. A refused write comes back this way, with what the user typed on it.
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("[data-dialog-slot]").forEach((slot) => opened(slot));
+  });
+
   // The buttons that close the dialog they stand in.
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-close-dialog]");

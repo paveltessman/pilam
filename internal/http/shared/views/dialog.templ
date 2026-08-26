@@ -1,6 +1,7 @@
 package views
 
 import (
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
 	"github.com/paveltessman/pilam/internal/http/shared/ui/icon"
 	"github.com/paveltessman/pilam/internal/platform/labels"
 )
@@ -61,4 +62,12 @@ templ DialogCancel() {
 	>
 		{ labels.ActionCancel }
 	</button>
+}
+
+// DialogClose is the footer of a dialog that writes as it goes. Nothing waits
+// for a save there, so the one button closes the dialog.
+templ DialogClose() {
+	@button.Button(button.Props{Attributes: templ.Attributes{"data-close-dialog": "true"}}) {
+		{ labels.ActionClose }
+	}
 }

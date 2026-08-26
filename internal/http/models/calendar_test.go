@@ -1,6 +1,7 @@
 package models_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -864,4 +865,57 @@ func TestModelCreateRefusesAPathThePickerDoesNotOfferAndWritesNoModel(t *testing
 	if list := testkit.GetAs(t, d, paths.Models, cookie).Body.String(); strings.Contains(list, "A-200") {
 		t.Error("the refused create wrote a model")
 	}
+}
+
+// The card above the table names the step the model comes to next: the active
+// step that holds no fact date and stands earliest.
+func TestModelCardNamesTheStepThatComesNext(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+
+	done := testkit.CreatedMilestoneType(t, d, cookie, "stamped", "The one that happened")
+	soon := testkit.CreatedMilestoneType(t, d, cookie, "nearest", "The one that comes up")
+	far := testkit.CreatedMilestoneType(t, d, cookie, "farthest", "The one far out")
+
+	stamped := testkit.AddedMilestone(t, d, modelID, done, yesterday)
+	testkit.EditedMilestone(t, d, stamped, milestones.MilestoneUpdateParams{
+		Fact: date.MustParse(yesterday), Active: true,
+	})
+	testkit.AddedMilestone(t, d, modelID, soon, nextWeek)
+	testkit.AddedMilestone(t, d, modelID, far, nextMonth)
+
+	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
+
+	testkit.Wants(t, body,
+		labels.ModelsNext,
+		"nearest",
+		labels.Date(date.MustParse(nextWeek))+labels.Separator+
+			fmt.Sprintf(labels.ModelsNextIn, labels.Days(milestones.DueWindow)),
+	)
+	if strings.Contains(body[:strings.Index(body, labels.MilestonesTitle)], "farthest") {
+		t.Error("the card names a step later than the nearest one")
+	}
+}
+
+// A model with nothing left to do says so, and a model with no calendar has
+// nothing to say at all.
+func TestModelCardReadsACalendarWithNothingLeftToDo(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	path := paths.Models + "/" + modelID
+
+	if body := testkit.GetAs(t, d, path, cookie).Body.String(); strings.Contains(body, labels.ModelsNext) {
+		t.Error("a model with no calendar carries the card that names the next step")
+	}
+
+	fit := testkit.CreatedMilestoneType(t, d, cookie, "fit", "Fit approved")
+	one := testkit.AddedMilestone(t, d, modelID, fit, yesterday)
+	testkit.EditedMilestone(t, d, one, milestones.MilestoneUpdateParams{
+		Fact: date.MustParse(yesterday), Active: true,
+	})
+
+	testkit.Wants(t, testkit.GetAs(t, d, path, cookie).Body.String(),
+		labels.ModelsNext,
+		labels.ModelsNextAllClosed,
+	)
 }

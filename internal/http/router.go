@@ -100,6 +100,8 @@ func NewRouter(deps Deps) http.Handler {
 	mux.Handle("POST "+paths.Models, guard(models.Create(deps.CatalogSvc, deps.MilestoneSvc)))
 	mux.Handle("GET "+paths.ModelNew, guard(models.ShowNew(deps.CatalogSvc, deps.MilestoneSvc)))
 	mux.Handle("GET "+paths.Model, guard(models.Show(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("GET "+paths.ModelEdit, guard(models.ShowEdit(deps.CatalogSvc)))
+	mux.Handle("GET "+paths.ModelPhotosEdit, guard(models.ShowPhotosEdit(deps.CatalogSvc, deps.Media)))
 	mux.Handle("POST "+paths.Model, guard(models.Save(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
 	mux.Handle("POST "+paths.ModelPhotos, guard(models.AddPhotos(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
 	mux.Handle("POST "+paths.ModelOrder, guard(models.ReorderPhotos(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
