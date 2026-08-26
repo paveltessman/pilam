@@ -558,6 +558,9 @@ func modelCard(
 		Calendar: held.section,
 		Trail:    trail,
 	}
+	// A row of the calendar says who last touched the step. The trail already
+	// holds that, so the section reads it off there rather than asking again.
+	card.Calendar.ReadLastChange(trail)
 	return card, true
 }
 

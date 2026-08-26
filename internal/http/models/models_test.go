@@ -32,8 +32,11 @@ var modelRoutes = []testkit.Route{
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/photos/order"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/photos/" + testkit.MissingID.String() + "/remove"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones"},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/edit"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/template"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/" + testkit.MissingID.String()},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/" + testkit.MissingID.String() + "/edit"},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/" + testkit.MissingID.String() + "/plan"},
 }
 
 // The bytes of the two files the upload tests post. The store settles the type

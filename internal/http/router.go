@@ -115,8 +115,12 @@ func NewRouter(deps Deps) http.Handler {
 		guard(models.AddMilestone(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
 	mux.Handle("POST "+paths.ModelMilestone,
 		guard(models.SaveMilestone(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
-	mux.Handle("POST "+paths.ModelMilestonePlan,
-		guard(models.MovePlan(deps.CatalogSvc, deps.MilestoneSvc, deps.AuthSvc, deps.AuditLog, deps.Media)))
+	mux.Handle("GET "+paths.ModelMilestonesEdit,
+		guard(models.ShowCalendarEdit(deps.CatalogSvc, deps.MilestoneSvc)))
+	mux.Handle("GET "+paths.ModelMilestoneEdit,
+		guard(models.ShowMilestoneEdit(deps.CatalogSvc, deps.MilestoneSvc)))
+	mux.Handle("GET "+paths.ModelMilestonePlan,
+		guard(models.PreviewPlan(deps.CatalogSvc, deps.MilestoneSvc)))
 
 	// S5, the users section. Root only: a member gets a 403 on every route of
 	// it, and never sees the nav link that leads here.

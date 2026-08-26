@@ -294,7 +294,7 @@ const (
 // The calendar section of the model screen.
 const (
 	MilestonesTitle = "Критический путь"
-	MilestonesHint  = "Этапы модели в порядке плановых дат."
+	MilestonesHint  = "Этапы модели в порядке плановых дат. Нажмите этап, чтобы увидеть базу и комментарий."
 	MilestonesEmpty = "У модели пока нет критического пути."
 
 	MilestonesStep     = "Этап"
@@ -313,6 +313,12 @@ const (
 	MilestonesNote    = "Комментарий"
 	MilestonesRetired = "Снятые этапы"
 
+	// What one row says beside its dates. %s of MilestonesLateBy is a count of
+	// days, and so is %s of MilestonesSlipBy.
+	MilestonesLateBy     = "на %s"
+	MilestonesHasNote    = "Есть комментарий"
+	MilestonesLastChange = "Последнее изменение"
+
 	// The two controls of the section: apply a critical path, and add one step
 	// the model does not hold.
 	MilestonesTemplate     = "Критический путь"
@@ -323,12 +329,19 @@ const (
 	MilestonesNoType       = "У модели уже есть все существующие этапы."
 	MilestonesStale        = "Этап уже изменён. Откройте страницу заново."
 
-	// The panel that asks about a plan date before it moves it.
-	MilestonesMoveTitle = "Перенос плановой даты"
-	MilestonesMoveHint  = "Следующие этапы сдвинутся на то же число дней. Этапы с фактической датой остаются на месте."
-	MilestonesMoveFrom  = "Было"
-	MilestonesMoveTo    = "Станет"
-	MilestonesMoveShift = "Сдвинуть следующие этапы"
+	// The dialog that edits one step, and the dialog that builds the calendar.
+	MilestonesEditHint      = "План, факт и комментарий этапа."
+	MilestonesPlanHint      = "База %s. Перенос сдвигает следующие этапы."
+	MilestonesFactHint      = "Дата в будущем недоступна."
+	MilestonesCalendarTitle = "Этапы и критический путь"
+	MilestonesCalendarHint  = "Применить путь целиком или добавить один этап."
+
+	// What the dialog shows before it moves a plan date: how far the move goes,
+	// and the switch that keeps the steps after it where they stand. %s of the
+	// two shift lines is a count of days.
+	MilestonesShiftLater   = "Перенос на %s позже"
+	MilestonesShiftEarlier = "Перенос на %s раньше"
+	MilestonesMoveShift    = "Сдвинуть следующие этапы"
 )
 
 // The milestone list: the late work of a whole season on one screen. It is the
@@ -358,15 +371,12 @@ const (
 
 // The actions of the calendar section.
 const (
-	ActionApplyTemplate  = "Применить путь"
-	ActionAddMilestone   = "Добавить"
-	ActionFactToday      = "Сегодня"
-	ActionFactClear      = "Снять факт"
-	ActionRetireStep     = "Снять этап"
-	ActionRestoreStep    = "Вернуть этап"
-	ActionMovePlan       = "Перенести"
-	ActionConfirmMove    = "Подтвердить"
-	ActionMilestoneEdits = "Даты этапа"
+	ActionApplyTemplate = "Применить путь"
+	ActionAddMilestone  = "Добавить"
+	ActionFactDone      = "Выполнено"
+	ActionFactToday     = "Сегодня"
+	ActionRetireStep    = "Снять этап"
+	ActionRestoreStep   = "Вернуть этап"
 )
 
 // The calendar of one model: what the trail of a milestone reads as.

@@ -34,12 +34,14 @@ const (
 
 	// The calendar section of the model card. A milestone carries no screen of
 	// its own: every one of these posts back to the card.
-	ModelMilestones = Model + "/milestones"
-	ModelTemplate   = ModelMilestones + "/template"
-	ModelMilestone  = ModelMilestones + "/{milestoneID}"
+	ModelMilestones     = Model + "/milestones"
+	ModelMilestonesEdit = ModelMilestones + "/edit"
+	ModelTemplate       = ModelMilestones + "/template"
+	ModelMilestone      = ModelMilestones + "/{milestoneID}"
+	ModelMilestoneEdit  = ModelMilestone + "/edit"
 
-	// The plan date of one step. It carries the steps after it, so it asks
-	// before it writes, and it posts on its own rather than with the row.
+	// The plan date of one step carries the steps after it. This reads what a
+	// date would carry, so that the dialog states the rule before it writes.
 	ModelMilestonePlan = ModelMilestone + "/plan"
 
 	Seasons   = "/seasons"

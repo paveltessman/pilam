@@ -22,8 +22,10 @@ const (
 // The dialogs the card edits in. A refused write names the one it came from, so
 // the card comes back with that dialog open on the values the user typed.
 const (
-	DialogHeader = "header"
-	DialogPhotos = "photos"
+	DialogHeader    = "header"
+	DialogPhotos    = "photos"
+	DialogMilestone = "milestone"
+	DialogCalendar  = "calendar"
 )
 
 // ModelCard is the screen of one model: the header it reads, the photo strip,
@@ -46,7 +48,11 @@ type ModelCard struct {
 	Alert  string
 	Notice string
 	Errors validate.FieldErrors
-	Open   string
+
+	// Open names the dialog the card comes back with, and OpenRow the step that
+	// dialog edits where the dialog is one of a step.
+	Open    string
+	OpenRow string
 
 	// Trail is what the audit log holds about this model, newest first.
 	Trail []shared.AuditEvent
@@ -148,7 +154,7 @@ templ Model(card ModelCard) {
 			@shared.FormNotice(card.Notice)
 			@modelHeader(card)
 			@modelNext(card.Calendar)
-			@modelCalendar(card.Calendar, messages)
+			@modelCalendar(card.Calendar)
 			@modelPhotos(card)
 			@shared.AuditPanel(card.Trail)
 			// The dialog the card is showing. It is empty until a control asks
@@ -159,6 +165,12 @@ templ Model(card ModelCard) {
 						@ModelHeaderDialog(card, messages)
 					case DialogPhotos:
 						@ModelPhotosDialog(card)
+					case DialogCalendar:
+						@CalendarDialog(card.Calendar, messages)
+					case DialogMilestone:
+						if row, held := card.Calendar.Row(card.OpenRow); held {
+							@MilestoneDialog(card.Calendar, row, messages)
+						}
 				}
 			</div>
 		</main>

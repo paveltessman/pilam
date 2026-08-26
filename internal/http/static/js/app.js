@@ -37,6 +37,18 @@
     document.querySelectorAll("[data-dialog-slot]").forEach((slot) => opened(slot));
   });
 
+  // The button that fills a date box with the day it names.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-fill-date]");
+    if (!button) {
+      return;
+    }
+    const box = document.getElementById(button.dataset.fillDate);
+    if (box) {
+      box.value = button.dataset.fillValue;
+    }
+  });
+
   // The buttons that close the dialog they stand in.
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-close-dialog]");
