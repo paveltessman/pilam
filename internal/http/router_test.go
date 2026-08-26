@@ -41,6 +41,8 @@ func TestPagesAreStyledAndRenderComponents(t *testing.T) {
 	for _, want := range []string{
 		`<title>` + labels.LoginTitle + `</title>`,
 		`/static/css/app.css`,
+		`/static/js/htmx.min.js`,
+		`/static/js/app.js`,
 		`type="submit"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -49,15 +51,23 @@ func TestPagesAreStyledAndRenderComponents(t *testing.T) {
 	}
 }
 
-// The stylesheet is embedded at compile time, so a build that skipped
+// The assets are embedded at compile time, so a build that skipped
 // `make css` cannot reach this test — but a mis-mounted route can.
-func TestStylesheetIsServed(t *testing.T) {
-	rec := testkit.Get(t, "/static/css/app.css")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	if rec.Body.Len() == 0 {
-		t.Error("stylesheet is empty")
+func TestAssetsAreServed(t *testing.T) {
+	for _, path := range []string{
+		"/static/css/app.css",
+		"/static/js/htmx.min.js",
+		"/static/js/app.js",
+	} {
+		t.Run(path, func(t *testing.T) {
+			rec := testkit.Get(t, path)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if rec.Body.Len() == 0 {
+				t.Error("the asset is empty")
+			}
+		})
 	}
 }
 

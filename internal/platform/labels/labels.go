@@ -35,6 +35,7 @@ const (
 	ActionPreview          = "Показать даты"
 	ActionResetPasswd      = "Сбросить пароль"
 	ActionBackToList       = "Назад к списку"
+	ActionClose            = "Закрыть"
 )
 
 // Common  strings that are used across ddifferent screens.

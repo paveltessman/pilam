@@ -35,6 +35,8 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-state-done: var(--state-done);
+  --color-state-due: var(--state-due);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -76,6 +78,11 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  /* The dots that read the state of one step of a critical path. The two
+     other states wear tokens the app already has: destructive for a late
+     step, border for a planned one. */
+  --state-done: oklch(0.55 0.12 155);
+  --state-due: oklch(0.72 0.16 75);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -112,6 +119,8 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  --state-done: oklch(0.7 0.14 155);
+  --state-due: oklch(0.8 0.15 75);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -122,6 +131,23 @@
   --sidebar-ring: oklch(0.556 0 0);
   --selection: oklch(0.922 0 0);
   --selection-foreground: oklch(0.205 0 0);
+}
+
+/* A dialog appears in place rather than sliding in. It is the one animation
+   the app has: everything else changes at once. */
+@theme {
+  --animate-pop-in: pop-in 160ms ease-out;
+
+  @keyframes pop-in {
+    from {
+      transform: scale(0.97);
+      opacity: 0;
+    }
+    to {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
 }
 
 @layer base {

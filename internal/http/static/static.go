@@ -11,8 +11,10 @@ import (
 // js/htmx.min.js is vendored, not generated: htmx 2.0.7, from
 // https://unpkg.com/htmx.org@2.0.7/dist/htmx.min.js. Replace the file to
 // change the version.
+//
+// js/app.js is ours. It holds the behaviour htmx does not cover.
 
-//go:embed css/app.css js/htmx.min.js
+//go:embed css/app.css js/htmx.min.js js/app.js
 var files embed.FS
 
 func Handler() http.Handler {
