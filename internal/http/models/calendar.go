@@ -137,6 +137,103 @@ func typeChoices(types []milestones.Type, held []milestones.CalendarRow) []share
 	return choices
 }
 
+// ShowCalendarEdit answers with the dialog that builds the calendar: it applies
+// a whole critical path, or it adds one step outside every path.
+func ShowCalendarEdit(catalogSvc *catalog.Service, milestoneSvc *milestones.Service) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		model, _, _, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		held, ok := loadCalendar(w, r, milestoneSvc, model.ID)
+		if !ok {
+			return
+		}
+		shared.Render(w, r, http.StatusOK, views.CalendarDialog(held.section, nil))
+	}
+	return handler
+}
+
+// ShowMilestoneEdit answers with the dialog that edits one step.
+func ShowMilestoneEdit(catalogSvc *catalog.Service, milestoneSvc *milestones.Service) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		model, _, _, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		milestoneID, ok := milestoneOf(w, r)
+		if !ok {
+			return
+		}
+		held, ok := loadCalendar(w, r, milestoneSvc, model.ID)
+		if !ok {
+			return
+		}
+
+		row, held2 := held.section.Row(milestoneID.String())
+		if !held2 {
+			logging.FromContext(r.Context()).Info("no such milestone on the model",
+				"model", model.ID, "milestone", milestoneID)
+			http.NotFound(w, r)
+			return
+		}
+		shared.Render(w, r, http.StatusOK, views.MilestoneDialog(held.section, row, nil))
+	}
+	return handler
+}
+
+// PreviewPlan answers what a plan date would carry with it. It writes nothing:
+// the dialog reads it while the user picks a date, and the save that follows
+// moves the dates.
+func PreviewPlan(catalogSvc *catalog.Service, milestoneSvc *milestones.Service) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		logger := logging.FromContext(ctx)
+
+		model, _, _, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		milestoneID, ok := milestoneOf(w, r)
+		if !ok {
+			return
+		}
+
+		plan, err := shared.QueriedDay(r, views.FieldMilestonePlan)
+		if err != nil || plan.IsZero() {
+			// A date the box cannot read carries nothing, and the dialog says
+			// so by showing no preview at all.
+			shared.Render(w, r, http.StatusOK, views.MilestoneShift(views.CalendarShift{}))
+			return
+		}
+
+		moves, err := milestoneSvc.Moves(ctx, milestoneID, plan)
+		if errors.Is(err, milestones.ErrNoMilestone) {
+			logger.Info("no such milestone", "model", model.ID, "milestone", milestoneID)
+			http.NotFound(w, r)
+			return
+		}
+		if err != nil {
+			if _, refused := shared.Rejections(err); refused {
+				shared.Render(w, r, http.StatusOK, views.MilestoneShift(views.CalendarShift{}))
+				return
+			}
+			logger.Error("reading what a plan date move carries failed",
+				"model", model.ID, "milestone", milestoneID, "err", err)
+			shared.WriteServerError(w)
+			return
+		}
+
+		held, ok := loadCalendar(w, r, milestoneSvc, model.ID)
+		if !ok {
+			return
+		}
+		shared.Render(w, r, http.StatusOK,
+			views.MilestoneShift(views.NewCalendarShift(held.section, moves)))
+	}
+	return handler
+}
+
 // ApplyTemplate builds the calendar of a model from a critical path. It adds
 // the steps the model lacks and moves no date the model already holds.
 func ApplyTemplate(
@@ -179,7 +276,8 @@ func ApplyTemplate(
 		}
 
 		logger.Info("calendar refused", "model", model.ID, "reason", errs)
-		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs)
+		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs,
+			views.DialogCalendar, "")
 	}
 	return handler
 }
@@ -229,14 +327,18 @@ func AddMilestone(
 		}
 
 		logger.Info("milestone refused", "model", model.ID, "reason", errs)
-		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs)
+		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs,
+			views.DialogCalendar, "")
 	}
 	return handler
 }
 
-// SaveMilestone writes one row of the calendar: the fact date, the note and the
-// active flag. The plan date is not on it, because a plan date carries the
-// steps after it. The plan date is moved by MovePlan.
+// SaveMilestone writes one step of the calendar: the plan date, the fact date,
+// the note and the active flag.
+//
+// A plan date carries the steps after it, so it moves in a write of its own,
+// before the rest of the step. The dialog showed what the move carries before
+// the user saved, and the switch of that preview says whether to carry them.
 func SaveMilestone(
 	catalogSvc *catalog.Service,
 	milestoneSvc *milestones.Service,
@@ -257,6 +359,7 @@ func SaveMilestone(
 			return
 		}
 
+		plan, planErr := shared.PostedDay(r, views.FieldMilestonePlan)
 		fact, factErr := shared.PostedDay(r, views.FieldMilestoneFact)
 		in := milestones.MilestoneUpdateParams{
 			Fact:   fact,
@@ -265,7 +368,12 @@ func SaveMilestone(
 		}
 		pressed(r, milestoneSvc.Today(), &in)
 
-		err := factErr
+		err := errors.Join(planErr, factErr)
+		// A button of a row posts no plan date at all, and it moves none.
+		if err == nil && !plan.IsZero() {
+			_, err = milestoneSvc.MovePlan(ctx, milestoneID, plan,
+				shared.PostedFlag(r, views.FieldMilestoneShift))
+		}
 		if err == nil {
 			err = milestoneSvc.UpdateMilestone(ctx, milestoneID, in)
 		}
@@ -276,11 +384,20 @@ func SaveMilestone(
 		}
 		if err == nil {
 			logger.Info("milestone updated", "model", model.ID, "milestone", milestoneID)
-			shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
+			// The two buttons of a row write without a dialog, so the card is
+			// where the user reads what each one did.
+			switch r.PostFormValue(views.FieldRowAction) {
+			case views.RowFactToday:
+				redirectDone(w, r, model.ID, doneFact, milestoneID.String())
+			case views.RowRetire:
+				redirectDone(w, r, model.ID, doneRetired, "")
+			default:
+				shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
+			}
 			return
 		}
 
-		errs, ok := shared.Rejections(factErr, err)
+		errs, ok := shared.Rejections(planErr, factErr, err)
 		if !ok {
 			logger.Error("updating a milestone failed unexpectedly",
 				"model", model.ID, "milestone", milestoneID, "err", err)
@@ -289,106 +406,10 @@ func SaveMilestone(
 		}
 
 		logger.Info("milestone update rejected", "model", model.ID, "milestone", milestoneID, "reason", errs)
-		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs)
+		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs,
+			views.DialogMilestone, milestoneID.String())
 	}
 	return handler
-}
-
-// MovePlan moves the plan date of one step.
-//
-// A plan date that moves later carries the steps after it, so the screen shows
-// the rule before it writes: the first post answers with the panel that names
-// every step the move carries, and the panel posts back the confirmation.
-//
-// A date that carries nobody is written at once, because the panel asks about a
-// choice the user does not have.
-func MovePlan(
-	catalogSvc *catalog.Service,
-	milestoneSvc *milestones.Service,
-	authSvc *auth.Service,
-	log *audit.Log,
-	store media.Store,
-) http.HandlerFunc {
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		logger := logging.FromContext(ctx)
-
-		model, _, _, ok := loadOne(w, r, catalogSvc)
-		if !ok {
-			return
-		}
-		milestoneID, ok := milestoneOf(w, r)
-		if !ok {
-			return
-		}
-
-		plan, err := shared.PostedDay(r, views.FieldMilestonePlan)
-		shift := shared.PostedFlag(r, views.FieldMilestoneShift)
-
-		// The panel marks its own post. Everything else is the box of a row,
-		// and it gets the question rather than the write.
-		if err == nil && !shared.PostedFlag(r, views.FieldMilestoneConfirm) {
-			var moves []milestones.Move
-			moves, err = milestoneSvc.Moves(ctx, milestoneID, plan)
-			if err == nil && len(moves) > 1 {
-				logger.Info("the calendar asks about a plan date move",
-					"model", model.ID, "milestone", milestoneID, "steps", len(moves))
-				askMove(w, r, catalogSvc, milestoneSvc, authSvc, log, store, moves)
-				return
-			}
-			// One step or none: nothing follows it, so the switch says nothing.
-			shift = false
-		}
-
-		var moved []milestones.Move
-		if err == nil {
-			moved, err = milestoneSvc.MovePlan(ctx, milestoneID, plan, shift)
-		}
-		if errors.Is(err, milestones.ErrNoMilestone) {
-			logger.Info("no such milestone", "model", model.ID, "milestone", milestoneID)
-			http.NotFound(w, r)
-			return
-		}
-		if err == nil {
-			logger.Info("plan date moved",
-				"model", model.ID, "milestone", milestoneID, "steps", len(moved), "shift", shift)
-			shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
-			return
-		}
-
-		errs, ok := shared.Rejections(err)
-		if !ok {
-			logger.Error("moving a plan date failed unexpectedly",
-				"model", model.ID, "milestone", milestoneID, "err", err)
-			shared.WriteServerError(w)
-			return
-		}
-
-		logger.Info("plan date move refused", "model", model.ID, "milestone", milestoneID, "reason", errs)
-		refuseCalendar(w, r, catalogSvc, milestoneSvc, authSvc, log, store, errs)
-	}
-	return handler
-}
-
-// askMove renders the card with the panel that asks about the move. The card
-// comes back whole, with the calendar as it still stands, because the write
-// waits for the answer.
-func askMove(
-	w http.ResponseWriter,
-	r *http.Request,
-	catalogSvc *catalog.Service,
-	milestoneSvc *milestones.Service,
-	authSvc *auth.Service,
-	log *audit.Log,
-	store media.Store,
-	moves []milestones.Move,
-) {
-	card, ok := modelCard(w, r, catalogSvc, milestoneSvc, authSvc, log, store)
-	if !ok {
-		return
-	}
-	card.Calendar.Move = views.NewCalendarMove(card.Calendar, moves)
-	shared.Render(w, r, http.StatusOK, views.Model(card))
 }
 
 // pressed reads the button of the row the user pressed and writes what it means
@@ -397,8 +418,6 @@ func pressed(r *http.Request, today time.Time, in *milestones.MilestoneUpdatePar
 	switch r.PostFormValue(views.FieldRowAction) {
 	case views.RowFactToday:
 		in.Fact = today
-	case views.RowFactClear:
-		in.Fact = time.Time{}
 	case views.RowRetire:
 		in.Active = false
 	case views.RowRestore:
@@ -407,8 +426,8 @@ func pressed(r *http.Request, today time.Time, in *milestones.MilestoneUpdatePar
 }
 
 // refuseCalendar renders the card again with the refusal on it. Every write of
-// the section answers this way: the screen comes back whole, with the calendar
-// and the trail as they stand.
+// the section answers this way: the screen comes back whole, with the dialog the
+// write came from open on the message it was refused with.
 func refuseCalendar(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -418,12 +437,15 @@ func refuseCalendar(
 	log *audit.Log,
 	store media.Store,
 	errs validate.FieldErrors,
+	open, openRow string,
 ) {
 	card, ok := modelCard(w, r, catalogSvc, milestoneSvc, authSvc, log, store)
 	if !ok {
 		return
 	}
 	card.Errors = errs
+	card.Open = open
+	card.OpenRow = openRow
 	shared.Render(w, r, http.StatusUnprocessableEntity, views.Model(card))
 }
 

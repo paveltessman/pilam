@@ -4,6 +4,7 @@ import (
 	"github.com/paveltessman/pilam/internal/catalog"
 	"github.com/paveltessman/pilam/internal/http/paths"
 	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/icon"
 	"github.com/paveltessman/pilam/internal/http/shared/ui/input"
 	shared "github.com/paveltessman/pilam/internal/http/shared/views"
 	"github.com/paveltessman/pilam/internal/platform/labels"
@@ -11,8 +12,27 @@ import (
 	"github.com/paveltessman/pilam/internal/platform/validate"
 )
 
-// ModelCard is the screen header: names one model, the photo strip, and the
-// two fields the header edits.
+// modelDialog is the slot on the card a dialog is swapped into, and
+// modelHeaderForm is the form the footer of the header dialog submits.
+const (
+	modelDialog     = "model-dialog"
+	modelHeaderForm = "model-header-form"
+)
+
+// The dialogs the card edits in. A refused write names the one it came from, so
+// the card comes back with that dialog open on the values the user typed.
+const (
+	DialogHeader    = "header"
+	DialogPhotos    = "photos"
+	DialogMilestone = "milestone"
+	DialogCalendar  = "calendar"
+)
+
+// ModelCard is the screen of one model: the header it reads, the photo strip,
+// the calendar section, and the history under them.
+//
+// The card writes nothing by itself. Every control that writes stands in a
+// dialog, and Open names the dialog the card comes back with.
 type ModelCard struct {
 	Chrome  shared.Chrome
 	ModelID string
@@ -29,6 +49,11 @@ type ModelCard struct {
 	Notice string
 	Errors validate.FieldErrors
 
+	// Open names the dialog the card comes back with, and OpenRow the step that
+	// dialog edits where the dialog is one of a step.
+	Open    string
+	OpenRow string
+
 	// Trail is what the audit log holds about this model, newest first.
 	Trail []shared.AuditEvent
 }
@@ -36,8 +61,14 @@ type ModelCard struct {
 // Action is where the header form posts.
 func (c ModelCard) Action() string { return paths.Models + "/" + c.ModelID }
 
+// EditAction is where the header dialog is read from.
+func (c ModelCard) EditAction() string { return c.Action() + "/edit" }
+
 // PhotosAction is where an upload posts.
 func (c ModelCard) PhotosAction() string { return c.Action() + "/photos" }
+
+// PhotosEditAction is where the photo dialog is read from.
+func (c ModelCard) PhotosEditAction() string { return c.PhotosAction() + "/edit" }
 
 // OrderAction is where a move posts the whole strip.
 func (c ModelCard) OrderAction() string { return c.PhotosAction() + "/order" }
@@ -47,11 +78,38 @@ func (c ModelCard) RemoveAction(photo ModelPhoto) string {
 	return c.PhotosAction() + "/" + photo.ID + "/remove"
 }
 
+// DropName names the drop and the day it targets.
+func (c ModelCard) DropName() string {
+	return c.Drop.Name + labels.Separator + labels.Date(c.Drop.TargetDate)
+}
+
+// State is the word the pill beside the article reads.
+func (c ModelCard) State() string {
+	if c.Active {
+		return labels.StateActive
+	}
+	return labels.StateInactive
+}
+
+// PhotoAlt names a photo for a reader who does not see it.
+func (c ModelCard) PhotoAlt() string { return labels.ModelsPhotoOf + " " + c.Article }
+
+// PageAlert is the alert the card itself carries. A dialog that is open carries
+// the alert instead, because the card behind it is not readable.
+func (c ModelCard) PageAlert() string {
+	if c.Open != "" {
+		return ""
+	}
+	return c.Alert
+}
+
 // ModelPhoto is one photo of the strip as the card shows it: where it is
-// served from, and the strip its two move buttons post.
+// served from, what the dialog calls it, and the strip its two move buttons
+// post.
 type ModelPhoto struct {
 	ID      string
 	URL     string
+	Label   string
 	Cover   bool
 	Earlier []string
 	Later   []string
@@ -61,7 +119,12 @@ type ModelPhoto struct {
 func NewModelStrip(photos []catalog.Photo, url func(media.Key) string) []ModelPhoto {
 	strip := make([]ModelPhoto, len(photos))
 	for i, photo := range photos {
-		strip[i] = ModelPhoto{ID: photo.ID.String(), URL: url(photo.MediaKey), Cover: i == 0}
+		strip[i] = ModelPhoto{
+			ID:    photo.ID.String(),
+			URL:   url(photo.MediaKey),
+			Label: labels.ModelsPhoto + " " + labels.Number(i+1),
+			Cover: i == 0,
+		}
 		if i > 0 {
 			strip[i].Earlier = swapped(photos, i, i-1)
 		}
@@ -86,104 +149,231 @@ templ Model(card ModelCard) {
 	{{ messages := labels.Messages(card.Errors) }}
 	{{ card.Chrome.Current = labels.ModelsTitle }}
 	@shared.Page(card.Article, card.Chrome) {
-		<main class="mx-auto w-full max-w-3xl px-6 py-10">
-			<h1 class="mb-1 text-2xl font-semibold tracking-tight">{ card.Article }</h1>
-			<p class="mb-6 text-sm text-muted-foreground">{ labels.ModelsSpineFixed }</p>
-			@shared.FormAlert(card.Alert)
+		<main class="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-10">
+			@shared.FormAlert(card.PageAlert())
 			@shared.FormNotice(card.Notice)
-			<form method="post" action={ templ.SafeURL(card.Action()) } class="space-y-5 rounded-lg border bg-card p-6 text-card-foreground">
-				<div class="grid gap-5 sm:grid-cols-2">
-					@shared.FormField(shared.FieldProps{Name: FieldModelSeason, Label: labels.ModelsSeason}) {
-						@input.Input(input.Props{ID: FieldModelSeason, Value: card.Season.Name, Readonly: true})
-					}
-					@shared.FormField(shared.FieldProps{Name: FieldModelDrop, Label: labels.ModelsDrop}) {
-						@input.Input(input.Props{ID: FieldModelDrop, Value: card.Drop.Name, Readonly: true})
-					}
-				</div>
-				@shared.FormField(shared.FieldProps{
-					Name:    FieldModelArticle,
-					Label:   labels.ModelsArticle,
-					Hint:    labels.ModelsArticleHint,
-					Message: messages[FieldModelArticle],
-				}) {
-					@input.Input(input.Props{
-						ID:         FieldModelArticle,
-						Name:       FieldModelArticle,
-						Value:      card.Article,
-						HasError:   messages[FieldModelArticle] != "",
-						Attributes: templ.Attributes{"autocomplete": "off"},
-					})
-				}
-				@shared.ActiveBox(FieldModelActive, card.Active)
-				@button.Button(button.Props{Type: button.TypeSubmit, FullWidth: true}) {
-					{ labels.ActionSave }
-				}
-			</form>
+			@modelHeader(card)
+			@modelNext(card.Calendar)
+			@modelCalendar(card.Calendar)
 			@modelPhotos(card)
-			@modelCalendar(card.Calendar, messages)
-			<div class="mt-6">
-				@button.Button(button.Props{Href: paths.Models, Variant: button.VariantGhost, Size: button.SizeSm}) {
-					{ labels.ActionBackToList }
+			@shared.AuditPanel(card.Trail)
+			// The dialog the card is showing. It is empty until a control asks
+			// htmx for one, or until a refused write brings one back.
+			<div id={ modelDialog } data-dialog-slot="true">
+				switch card.Open {
+					case DialogHeader:
+						@ModelHeaderDialog(card, messages)
+					case DialogPhotos:
+						@ModelPhotosDialog(card)
+					case DialogCalendar:
+						@CalendarDialog(card.Calendar, messages)
+					case DialogMilestone:
+						if row, held := card.Calendar.Row(card.OpenRow); held {
+							@MilestoneDialog(card.Calendar, row, messages)
+						}
 				}
 			</div>
-			@shared.AuditTrail(card.Trail)
 		</main>
 	}
 }
 
-// modelPhotos is the strip: the upload control, and every photo with the
-// buttons that move it or remove it.
+// modelHeader names the model: where it sits in the catalog, what it is called,
+// and whether it is still in work. The button beside it opens the one dialog
+// that changes any of the three.
+templ modelHeader(card ModelCard) {
+	<div class="flex items-start gap-6">
+		<div class="flex min-w-0 flex-col gap-2">
+			<nav class="flex items-center gap-2.5 text-[13px]">
+				<a href={ templ.SafeURL(paths.Models) } class="text-muted-foreground hover:text-foreground">
+					{ labels.ModelsTitle }
+				</a>
+				<span class="text-border">/</span>
+				<span class="text-muted-foreground">{ labels.ModelsCardTitle }</span>
+			</nav>
+			<div class="flex flex-wrap items-center gap-3">
+				<h1 class="text-[26px] font-semibold tracking-tight">{ card.Article }</h1>
+				<span class="rounded-full border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+					{ card.State() }
+				</span>
+			</div>
+			<div class="flex flex-wrap items-center gap-5 text-sm text-muted-foreground">
+				<span>{ labels.ModelsSeason } <span class="text-foreground">{ card.Season.Name }</span></span>
+				<span>{ labels.ModelsDrop } <span class="text-foreground">{ card.DropName() }</span></span>
+			</div>
+		</div>
+		@button.Button(button.Props{
+			Variant:    button.VariantOutline,
+			Class:      "ml-auto",
+			Attributes: opensDialog(card.EditAction()),
+		}) {
+			@icon.Pencil(icon.Props{Class: "size-4"})
+			{ labels.ActionEdit }
+		}
+	</div>
+}
+
+// modelNext is the one card of the summary: the step the model comes to next,
+// and how far off it stands. A model with no calendar has nothing to summarise.
+templ modelNext(calendar ModelCalendar) {
+	if calendar.Next.Held() {
+		<div class="flex w-full max-w-xs flex-col gap-1.5 rounded-lg border px-4.5 py-4">
+			<span class="text-xs font-medium tracking-wider text-muted-foreground uppercase">
+				{ labels.ModelsNext }
+			</span>
+			<span class="text-lg font-semibold tracking-tight">{ calendar.Next.Type }</span>
+			<span class="text-sm text-muted-foreground">{ calendar.Next.When }</span>
+		</div>
+	}
+}
+
+// modelPhotos is the strip as the card reads it. The first photo is the cover,
+// and everything that changes the strip stands in the dialog.
 templ modelPhotos(card ModelCard) {
-	<section class="mt-10">
-		<h2 class="mb-1 text-lg font-semibold tracking-tight">{ labels.ModelsPhotos }</h2>
-		<p class="mb-4 text-sm text-muted-foreground">{ labels.ModelsPhotosHint }</p>
-		<form
-			method="post"
-			action={ templ.SafeURL(card.PhotosAction()) }
-			enctype="multipart/form-data"
-			class="mb-6 flex flex-wrap items-center gap-3"
-		>
-			@input.Input(input.Props{
-				ID:         FieldModelPhoto,
-				Name:       FieldModelPhoto,
-				Type:       input.TypeFile,
-				FileAccept: "image/*",
-				Class:      "max-w-md",
-				Attributes: templ.Attributes{"multiple": true, "aria-label": labels.ModelsPhotoUpload},
-			})
-			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
-				{ labels.ActionAddPhoto }
+	<section class="flex flex-col gap-3">
+		<div class="flex items-end gap-4">
+			<div>
+				<h2 class="text-base font-semibold tracking-tight">{ labels.ModelsPhotos }</h2>
+			</div>
+			@button.Button(button.Props{
+				Variant:    button.VariantOutline,
+				Size:       button.SizeSm,
+				Class:      "ml-auto",
+				Attributes: opensDialog(card.PhotosEditAction()),
+			}) {
+				{ labels.ActionManagePhotos }
 			}
-		</form>
+		</div>
 		if len(card.Photos) == 0 {
 			@shared.EmptyPanel(labels.ModelsPhotosEmpty)
 		} else {
-			<ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+			<ul class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
 				for _, photo := range card.Photos {
-					@modelPhoto(card, photo)
+					<li class="relative">
+						<img
+							src={ photo.URL }
+							alt={ card.PhotoAlt() }
+							class="aspect-3/4 w-full rounded-lg border bg-muted object-cover"
+						/>
+						if photo.Cover {
+							<span class="absolute top-2.5 left-2.5 rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground">
+								{ labels.ModelsPhotoCover }
+							</span>
+						}
+					</li>
 				}
 			</ul>
 		}
 	</section>
 }
 
-templ modelPhoto(card ModelCard, photo ModelPhoto) {
-	<li class="space-y-2 rounded-lg border p-2">
-		<img src={ photo.URL } alt={ labels.ModelsPhotoOf + " " + card.Article } class="aspect-square w-full rounded object-cover"/>
-		if photo.Cover {
-			<p class="text-center text-xs font-medium text-muted-foreground">{ labels.ModelsPhotoCover }</p>
+// ModelHeaderDialog edits what the header of the card names. The season and the
+// drop of a model do not move, so both read as boxes nobody types in.
+templ ModelHeaderDialog(card ModelCard, messages map[string]string) {
+	@shared.Dialog(shared.DialogProps{
+		Title: labels.ModelsCardTitle,
+		Hint:  labels.ModelsHeaderHint,
+	}, modelHeaderSave()) {
+		@shared.FormAlert(card.Alert)
+		<form
+			id={ modelHeaderForm }
+			method="post"
+			action={ templ.SafeURL(card.Action()) }
+			class="flex flex-col gap-5"
+		>
+			<div class="grid gap-3 sm:grid-cols-2">
+				@shared.FormField(shared.FieldProps{Name: FieldModelSeason, Label: labels.ModelsSeason}) {
+					@input.Input(input.Props{ID: FieldModelSeason, Value: card.Season.Name, Readonly: true})
+				}
+				@shared.FormField(shared.FieldProps{Name: FieldModelDrop, Label: labels.ModelsDrop}) {
+					@input.Input(input.Props{ID: FieldModelDrop, Value: card.DropName(), Readonly: true})
+				}
+			</div>
+			@shared.FormField(shared.FieldProps{
+				Name:    FieldModelArticle,
+				Label:   labels.ModelsArticle,
+				Hint:    labels.ModelsArticleHint,
+				Message: messages[FieldModelArticle],
+			}) {
+				@input.Input(input.Props{
+					ID:         FieldModelArticle,
+					Name:       FieldModelArticle,
+					Value:      card.Article,
+					HasError:   messages[FieldModelArticle] != "",
+					Attributes: templ.Attributes{"autocomplete": "off"},
+				})
+			}
+			@shared.ActiveBox(FieldModelActive, card.Active)
+		</form>
+	}
+}
+
+templ modelHeaderSave() {
+	@button.Button(button.Props{Type: button.TypeSubmit, Form: modelHeaderForm}) {
+		{ labels.ActionSave }
+	}
+	@shared.DialogCancel()
+}
+
+// ModelPhotosDialog manages the strip: it adds photos, it moves one photo up or
+// down, and it removes one. Every button of it writes at once, so the dialog
+// has nothing to save.
+templ ModelPhotosDialog(card ModelCard) {
+	@shared.Dialog(shared.DialogProps{
+		Title: labels.ModelsPhotos,
+	}, shared.DialogClose()) {
+		@shared.FormAlert(card.Alert)
+		<form
+			method="post"
+			action={ templ.SafeURL(card.PhotosAction()) }
+			enctype="multipart/form-data"
+			class="flex flex-wrap items-center gap-3"
+		>
+			@input.Input(input.Props{
+				ID:         FieldModelPhoto,
+				Name:       FieldModelPhoto,
+				Type:       input.TypeFile,
+				FileAccept: "image/*",
+				Class:      "min-w-0 flex-1",
+				Attributes: templ.Attributes{"multiple": true, "aria-label": labels.ModelsPhotoUpload},
+			})
+			@button.Button(button.Props{Type: button.TypeSubmit, Size: button.SizeSm}) {
+				{ labels.ActionAddPhoto }
+			}
+		</form>
+		if len(card.Photos) > 0 {
+			<ul class="flex flex-col gap-2.5">
+				for _, photo := range card.Photos {
+					@modelPhotoRow(card, photo)
+				}
+			</ul>
+			<p class="text-sm text-muted-foreground">{ labels.ModelsPhotosCoverHint }</p>
 		}
-		<div class="flex items-center justify-center gap-1">
-			@photoOrderForm(card, photo.Earlier, labels.ActionPhotoEarlier, "←")
-			@photoOrderForm(card, photo.Later, labels.ActionPhotoLater, "→")
+	}
+}
+
+templ modelPhotoRow(card ModelCard, photo ModelPhoto) {
+	<li class="flex items-center gap-3 rounded-lg border p-2">
+		<img src={ photo.URL } alt="" class="h-14 w-11 flex-none rounded-sm bg-muted object-cover"/>
+		<span class="min-w-0 truncate text-sm">{ photo.Label }</span>
+		<div class="ml-auto flex items-center gap-1">
+			@photoOrderForm(card, photo.Earlier, labels.ActionMoveUp) {
+				@icon.ArrowUp(icon.Props{Class: "size-3.5"})
+			}
+			@photoOrderForm(card, photo.Later, labels.ActionMoveDown) {
+				@icon.ArrowDown(icon.Props{Class: "size-3.5"})
+			}
 			<form method="post" action={ templ.SafeURL(card.RemoveAction(photo)) }>
 				@button.Button(button.Props{
-					Type:       button.TypeSubmit,
-					Variant:    button.VariantGhost,
-					Size:       button.SizeSm,
-					Attributes: templ.Attributes{"aria-label": labels.ActionPhotoRemove, "title": labels.ActionPhotoRemove},
+					Type:    button.TypeSubmit,
+					Variant: button.VariantGhost,
+					Size:    button.SizeIcon,
+					Class:   "size-7 text-destructive hover:bg-destructive/10 hover:text-destructive",
+					Attributes: templ.Attributes{
+						"aria-label": labels.ActionPhotoRemove,
+						"title":      labels.ActionPhotoRemove,
+					},
 				}) {
-					✕
+					@icon.X(icon.Props{Class: "size-3.5"})
 				}
 			</form>
 		</div>
@@ -192,7 +382,7 @@ templ modelPhoto(card ModelCard, photo ModelPhoto) {
 
 // photoOrderForm posts the whole strip in the order this button makes. It
 // renders nothing when the move has nowhere to go.
-templ photoOrderForm(card ModelCard, order []string, name, arrow string) {
+templ photoOrderForm(card ModelCard, order []string, name string) {
 	if len(order) > 0 {
 		<form method="post" action={ templ.SafeURL(card.OrderAction()) }>
 			for _, id := range order {
@@ -200,12 +390,23 @@ templ photoOrderForm(card ModelCard, order []string, name, arrow string) {
 			}
 			@button.Button(button.Props{
 				Type:       button.TypeSubmit,
-				Variant:    button.VariantGhost,
-				Size:       button.SizeSm,
+				Variant:    button.VariantOutline,
+				Size:       button.SizeIcon,
+				Class:      "size-7",
 				Attributes: templ.Attributes{"aria-label": name, "title": name},
 			}) {
-				{ arrow }
+				{ children... }
 			}
 		</form>
+	}
+}
+
+// opensDialog is what a control carries to ask htmx for a dialog and to put it
+// on the card.
+func opensDialog(href string) templ.Attributes {
+	return templ.Attributes{
+		"hx-get":    href,
+		"hx-target": "#" + modelDialog,
+		"hx-swap":   "innerHTML",
 	}
 }

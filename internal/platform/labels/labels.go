@@ -35,6 +35,8 @@ const (
 	ActionPreview          = "Показать даты"
 	ActionResetPasswd      = "Сбросить пароль"
 	ActionBackToList       = "Назад к списку"
+	ActionClose            = "Закрыть"
+	ActionEdit             = "Изменить"
 )
 
 // Common  strings that are used across ddifferent screens.
@@ -47,6 +49,9 @@ const (
 
 	// The choice a filter offers for "do not filter on this at all".
 	FilterAny = "Все"
+
+	// What stands between a name and the value that narrows it: "D2 · 01.10.2026".
+	Separator = " · "
 )
 
 // The audit trail every card carries: the heading, the columns, and the words
@@ -180,8 +185,18 @@ const (
 	ModelsArticleHint = "Номер артикула."
 	ModelsDropHint    = "Дроп, в котором выходит модель."
 	ModelsNoDrop      = "Сначала создайте сезон и дроп: модель существует внутри дропа."
-	ModelsSpineFixed  = "Модель"
 	ModelsFilterState = "Состояние"
+
+	// The dialog that edits the header of the card.
+	ModelsHeaderHint = "Артикул и состояние. Сезон и дроп у модели не меняются."
+
+	// The card that says which step the model comes to next. %s of ModelsNextIn
+	// is a count of days.
+	ModelsNext          = "Ближайший этап"
+	ModelsNextAllClosed = "Все этапы закрыты"
+	ModelsNextLate      = "просрочен"
+	ModelsNextToday     = "сегодня"
+	ModelsNextIn        = "через %s"
 
 	// The critical path control of the create screen. It builds the calendar of
 	// the new model, and it offers the choice that builds none.
@@ -193,14 +208,14 @@ const (
 const (
 	ModelsPhotos      = "Фотографии"
 	ModelsPhotosEmpty = "Фотографий пока нет."
-	ModelsPhotosHint  = "Первое фото — обложка модели."
 	ModelsPhotoCover  = "Обложка"
 	ModelsPhotoOf     = "Фото модели"
 	ModelsPhotoUpload = "Выберите изображения"
 
-	ActionPhotoEarlier = "Сдвинуть влево"
-	ActionPhotoLater   = "Сдвинуть вправо"
-	ActionPhotoRemove  = "Удалить"
+	ActionManagePhotos    = "Изменить"
+	ModelsPhotosCoverHint = "Верхнее фото будет обложкой модели."
+
+	ActionPhotoRemove = "Удалить"
 
 	// What a refused upload or a refused reorder reports.
 	ModelsPhotoNone     = "Выберите хотя бы один файл."
@@ -279,7 +294,7 @@ const (
 // The calendar section of the model screen.
 const (
 	MilestonesTitle = "Критический путь"
-	MilestonesHint  = "Этапы модели в порядке плановых дат."
+	MilestonesHint  = "Этапы модели в порядке плановых дат. Нажмите этап, чтобы увидеть базу и комментарий."
 	MilestonesEmpty = "У модели пока нет критического пути."
 
 	MilestonesStep     = "Этап"
@@ -298,6 +313,17 @@ const (
 	MilestonesNote    = "Комментарий"
 	MilestonesRetired = "Снятые этапы"
 
+	// What one row says beside its dates. %s of MilestonesLateBy is a count of
+	// days, and so is %s of MilestonesSlipBy.
+	MilestonesLateBy     = "на %s"
+	MilestonesHasNote    = "Есть комментарий"
+	MilestonesLastChange = "Последнее изменение"
+
+	// What the card reports after a write the row made by itself. %s of
+	// MilestonesFactNotice names the step, and %s the day it was stamped with.
+	MilestonesFactNotice    = "Факт проставлен: %s — %s."
+	MilestonesRetiredNotice = "Этап снят."
+
 	// The two controls of the section: apply a critical path, and add one step
 	// the model does not hold.
 	MilestonesTemplate     = "Критический путь"
@@ -308,12 +334,19 @@ const (
 	MilestonesNoType       = "У модели уже есть все существующие этапы."
 	MilestonesStale        = "Этап уже изменён. Откройте страницу заново."
 
-	// The panel that asks about a plan date before it moves it.
-	MilestonesMoveTitle = "Перенос плановой даты"
-	MilestonesMoveHint  = "Следующие этапы сдвинутся на то же число дней. Этапы с фактической датой остаются на месте."
-	MilestonesMoveFrom  = "Было"
-	MilestonesMoveTo    = "Станет"
-	MilestonesMoveShift = "Сдвинуть следующие этапы"
+	// The dialog that edits one step, and the dialog that builds the calendar.
+	MilestonesEditHint      = "План, факт и комментарий этапа."
+	MilestonesPlanHint      = "База %s. Перенос сдвигает следующие этапы."
+	MilestonesFactHint      = "Дата в будущем недоступна."
+	MilestonesCalendarTitle = "Этапы и критический путь"
+	MilestonesCalendarHint  = "Применить путь целиком или добавить один этап."
+
+	// What the dialog shows before it moves a plan date: how far the move goes,
+	// and the switch that keeps the steps after it where they stand. %s of the
+	// two shift lines is a count of days.
+	MilestonesShiftLater   = "Перенос на %s позже"
+	MilestonesShiftEarlier = "Перенос на %s раньше"
+	MilestonesMoveShift    = "Сдвинуть следующие этапы"
 )
 
 // The milestone list: the late work of a whole season on one screen. It is the
@@ -343,15 +376,12 @@ const (
 
 // The actions of the calendar section.
 const (
-	ActionApplyTemplate  = "Применить путь"
-	ActionAddMilestone   = "Добавить"
-	ActionFactToday      = "Сегодня"
-	ActionFactClear      = "Снять факт"
-	ActionRetireStep     = "Снять этап"
-	ActionRestoreStep    = "Вернуть этап"
-	ActionMovePlan       = "Перенести"
-	ActionConfirmMove    = "Подтвердить"
-	ActionMilestoneEdits = "Даты этапа"
+	ActionApplyTemplate = "Применить путь"
+	ActionAddMilestone  = "Добавить"
+	ActionFactDone      = "Выполнено"
+	ActionFactToday     = "Сегодня"
+	ActionRetireStep    = "Снять этап"
+	ActionRestoreStep   = "Вернуть этап"
 )
 
 // The calendar of one model: what the trail of a milestone reads as.

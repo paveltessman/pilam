@@ -31,6 +31,23 @@ func PostedDay(r *http.Request, field string) (time.Time, error) {
 	return day, nil
 }
 
+// QueriedDay reads a date off the query of a request, for a screen that answers
+// a question about a date rather than writing one.
+//
+// It reads an empty query the way PostedDay reads an empty box.
+func QueriedDay(r *http.Request, field string) (time.Time, error) {
+	raw := strings.TrimSpace(r.URL.Query().Get(field))
+	if raw == "" {
+		return time.Time{}, nil
+	}
+
+	day, err := date.Parse(raw)
+	if err != nil {
+		return time.Time{}, validate.Fail(field, validate.NotADate)
+	}
+	return day, nil
+}
+
 // PostedNumber reads a number box.
 //
 // An empty box gives zero and reports false: the caller decides whether a box

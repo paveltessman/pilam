@@ -5,8 +5,10 @@ package models
 import (
 	"context"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
@@ -219,10 +221,103 @@ func Show(
 		if !ok {
 			return
 		}
-		if shared.IsSaved(r) {
-			card.Notice = labels.Saved
-		}
+		card.Notice = cardNotice(r, card.Calendar)
 		shared.Render(w, r, http.StatusOK, views.Model(card))
+	}
+	return handler
+}
+
+// The mark a write of the calendar leaves on the card it sends the browser back
+// to. A write that has something of its own to say names itself here, and the
+// card reads the mark and reports it in the words of the section.
+//
+// Every other write leaves the mark that RedirectSaved sets, and the card
+// reports the plain sentence every screen reports.
+const (
+	doneQuery = "done"
+	stepQuery = "step"
+
+	doneFact    = "fact"
+	doneRetired = "retired"
+)
+
+// redirectDone sends the browser back to the card with the mark that says what
+// the write did.
+func redirectDone(w http.ResponseWriter, r *http.Request, modelID ids.ID, done, step string) {
+	query := url.Values{doneQuery: {done}}
+	if step != "" {
+		query.Set(stepQuery, step)
+	}
+	http.Redirect(w, r, paths.Models+"/"+modelID.String()+"?"+query.Encode(), http.StatusSeeOther)
+}
+
+// cardNotice is what the card reports about the write the browser just came
+// back from. A card the user simply opened reports nothing.
+//
+// A mark that names a step the model does not hold is a link somebody kept, so
+// it reports the plain sentence rather than a step that is not there.
+func cardNotice(r *http.Request, calendar views.ModelCalendar) string {
+	query := r.URL.Query()
+	switch query.Get(doneQuery) {
+	case doneFact:
+		row, held := calendar.Row(query.Get(stepQuery))
+		if !held {
+			return labels.Saved
+		}
+		return fmt.Sprintf(labels.MilestonesFactNotice, row.Type, row.FactDay())
+
+	case doneRetired:
+		return labels.MilestonesRetiredNotice
+	}
+
+	if shared.IsSaved(r) {
+		return labels.Saved
+	}
+	return ""
+}
+
+// ShowEdit answers with the dialog that edits the header of the card.
+func ShowEdit(catalogSvc *catalog.Service) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		model, drop, season, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		card := views.ModelCard{
+			ModelID: model.ID.String(),
+			Article: model.Article,
+			Active:  model.Active,
+			Season:  season,
+			Drop:    drop,
+		}
+		shared.Render(w, r, http.StatusOK, views.ModelHeaderDialog(card, nil))
+	}
+	return handler
+}
+
+// ShowPhotosEdit answers with the dialog that manages the photo strip.
+func ShowPhotosEdit(catalogSvc *catalog.Service, store media.Store) http.HandlerFunc {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		model, _, _, ok := loadOne(w, r, catalogSvc)
+		if !ok {
+			return
+		}
+		photos, err := catalogSvc.ListPhotos(ctx, model.ID)
+		if err != nil {
+			logging.FromContext(ctx).Error("listing the photos of a model failed",
+				"model", model.ID, "err", err)
+			shared.WriteServerError(w)
+			return
+		}
+
+		card := views.ModelCard{
+			ModelID: model.ID.String(),
+			Article: model.Article,
+			Photos:  views.NewModelStrip(photos, store.URL),
+		}
+		shared.Render(w, r, http.StatusOK, views.ModelPhotosDialog(card))
 	}
 	return handler
 }
@@ -270,6 +365,7 @@ func Save(
 		logger.Info("model update rejected", "model", model.ID, "reason", errs)
 		card.Article = article
 		card.Errors = errs
+		card.Open = views.DialogHeader
 		shared.Render(w, r, http.StatusUnprocessableEntity, views.Model(card))
 	}
 	return handler
@@ -459,6 +555,7 @@ func refusePhotos(
 		return
 	}
 	card.Alert = alert
+	card.Open = views.DialogPhotos
 	shared.Render(w, r, http.StatusUnprocessableEntity, views.Model(card))
 }
 
@@ -510,6 +607,9 @@ func modelCard(
 		Calendar: held.section,
 		Trail:    trail,
 	}
+	// A row of the calendar says who last touched the step. The trail already
+	// holds that, so the section reads it off there rather than asking again.
+	card.Calendar.ReadLastChange(trail)
 	return card, true
 }
 

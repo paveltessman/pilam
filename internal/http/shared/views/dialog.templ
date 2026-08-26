@@ -1,0 +1,73 @@
+package views
+
+import (
+	"github.com/paveltessman/pilam/internal/http/shared/ui/button"
+	"github.com/paveltessman/pilam/internal/http/shared/ui/icon"
+	"github.com/paveltessman/pilam/internal/platform/labels"
+)
+
+// DialogProps names one dialog: the heading it carries, and the line under it.
+type DialogProps struct {
+	Title string
+	Hint  string
+}
+
+// Dialog is the modal a screen edits in. The children are the body, which
+// scrolls, and footer holds the buttons, which stay in view under it.
+//
+// A dialog reaches the screen as an htmx fragment, and static/js/app.js opens
+// it. The browser gives a modal dialog the backdrop, the focus trap and the
+// Escape key, so the markup states none of the three.
+//
+// The margin is what centres the dialog. The browser centres a modal one with a
+// margin of its own, and the Tailwind reset sets every margin to zero, so the
+// dialog states m-auto to take that margin back.
+templ Dialog(props DialogProps, footer templ.Component) {
+	<dialog
+		aria-label={ props.Title }
+		class="animate-pop-in m-auto max-h-[calc(100vh-6rem)] w-[520px] flex-col overflow-hidden rounded-xl border bg-card p-0 text-card-foreground shadow-2xl backdrop:bg-foreground/30 open:flex"
+	>
+		<div class="flex items-start gap-4 border-b px-6 pt-5 pb-4">
+			<div class="min-w-0">
+				<h2 class="text-base font-semibold tracking-tight">{ props.Title }</h2>
+				if props.Hint != "" {
+					<p class="mt-0.5 text-sm text-pretty text-muted-foreground">{ props.Hint }</p>
+				}
+			</div>
+			<button
+				type="button"
+				data-close-dialog="true"
+				aria-label={ labels.ActionClose }
+				class="ml-auto flex size-8 flex-none items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+			>
+				@icon.X(icon.Props{Class: "size-4"})
+			</button>
+		</div>
+		<div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+			{ children... }
+		</div>
+		<div class="flex items-center gap-3 border-t bg-muted/40 px-6 py-4">
+			@footer
+		</div>
+	</dialog>
+}
+
+// DialogCancel is the button every dialog footer ends with. It closes the
+// dialog and writes nothing.
+templ DialogCancel() {
+	<button
+		type="button"
+		data-close-dialog="true"
+		class="h-9 rounded-md px-3 text-sm text-muted-foreground hover:text-foreground"
+	>
+		{ labels.ActionCancel }
+	</button>
+}
+
+// DialogClose is the footer of a dialog that writes as it goes. Nothing waits
+// for a save there, so the one button closes the dialog.
+templ DialogClose() {
+	@button.Button(button.Props{Attributes: templ.Attributes{"data-close-dialog": "true"}}) {
+		{ labels.ActionClose }
+	}
+}

@@ -25,13 +25,18 @@ var modelRoutes = []testkit.Route{
 	{Method: http.MethodPost, Path: paths.Models},
 	{Method: http.MethodGet, Path: paths.Models + "/new"},
 	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String()},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/edit"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String()},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/photos/edit"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/photos"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/photos/order"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/photos/" + testkit.MissingID.String() + "/remove"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones"},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/edit"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/template"},
 	{Method: http.MethodPost, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/" + testkit.MissingID.String()},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/" + testkit.MissingID.String() + "/edit"},
+	{Method: http.MethodGet, Path: paths.Models + "/" + testkit.MissingID.String() + "/milestones/" + testkit.MissingID.String() + "/plan"},
 }
 
 // The bytes of the two files the upload tests post. The store settles the type
@@ -107,7 +112,7 @@ func upload(t *testing.T, d testkit.Deps, path string, files []string, cookie *h
 func photoIDs(t *testing.T, d testkit.Deps, cookie *http.Cookie, modelID string) []string {
 	t.Helper()
 
-	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
+	body := testkit.GetAs(t, d, photosDialog(modelID), cookie).Body.String()
 
 	// Every photo carries a remove form named after it, and the forms stand in
 	// the order the strip does. The identifier is what the action ends with.
@@ -127,6 +132,10 @@ func photoIDs(t *testing.T, d testkit.Deps, cookie *http.Cookie, modelID string)
 		rest = remainder
 	}
 }
+
+// headerDialog and photosDialog are the two dialogs the card edits in.
+func headerDialog(modelID string) string { return paths.Models + "/" + modelID + "/edit" }
+func photosDialog(modelID string) string { return paths.Models + "/" + modelID + "/photos/edit" }
 
 // orderForm posts a strip as the move buttons do.
 func orderForm(strip []string) url.Values {
@@ -663,8 +672,10 @@ func TestModelScreensAnswer404ForAModelThatIsNotThere(t *testing.T) {
 
 	for _, id := range []string{testkit.MissingID.String(), "not-an-id"} {
 		path := paths.Models + "/" + id
-		if rec := testkit.GetAs(t, d, path, cookie); rec.Code != http.StatusNotFound {
-			t.Errorf("GET %s status = %d, want %d", path, rec.Code, http.StatusNotFound)
+		for _, read := range []string{path, headerDialog(id), photosDialog(id)} {
+			if rec := testkit.GetAs(t, d, read, cookie); rec.Code != http.StatusNotFound {
+				t.Errorf("GET %s status = %d, want %d", read, rec.Code, http.StatusNotFound)
+			}
 		}
 		rec := testkit.PostAs(t, d, path, modelForm(ids.Nil.String(), "A-100", true), cookie)
 		if rec.Code != http.StatusNotFound {
@@ -709,4 +720,123 @@ func TestModelCardShowsTheAuditTrail(t *testing.T) {
 	if key := coverOf(t, d, cookie, id); key == "" || strings.Contains(body, ": "+key) {
 		t.Errorf("the trail on the card reads out the media key %q", key)
 	}
+}
+
+// The card reads. It names where the model sits in the catalog and what state
+// it is in, and it carries no box the user types into.
+func TestModelCardReadsTheHeaderAndOffersTheDialog(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.TestEmail, testkit.TestPasswd)
+
+	id := createdModel(t, d, cookie, dropID, "A-100")
+	body := testkit.GetAs(t, d, paths.Models+"/"+id, cookie).Body.String()
+
+	testkit.Wants(t, body,
+		labels.ModelsCardTitle,
+		"A-100",
+		labels.StateActive,
+		"S1",
+		"Drop 1"+labels.Separator+"15.02.2027",
+		labels.ActionEdit,
+		labels.ActionManagePhotos,
+		`hx-get="`+headerDialog(id)+`"`,
+		`hx-get="`+photosDialog(id)+`"`,
+	)
+	if strings.Contains(body, `name="`+views.FieldModelArticle+`"`) {
+		t.Error("the card carries the article box that belongs in the dialog")
+	}
+}
+
+// The dialog that edits the header holds the article and the state, and it
+// reads the season and the drop back without offering to move either.
+func TestModelHeaderDialogEditsTheArticleAndTheState(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.TestEmail, testkit.TestPasswd)
+
+	id := createdModel(t, d, cookie, dropID, "A-100")
+	body := testkit.GetAs(t, d, headerDialog(id), cookie).Body.String()
+
+	testkit.Wants(t, body,
+		"<dialog",
+		labels.ModelsHeaderHint,
+		`name="`+views.FieldModelArticle+`"`,
+		`value="A-100"`,
+		`name="`+views.FieldModelActive+`"`,
+		`action="`+paths.Models+"/"+id+`"`,
+		labels.ActionSave,
+	)
+	for _, field := range []string{views.FieldModelSeason, views.FieldModelDrop} {
+		if strings.Contains(body, `name="`+field+`"`) {
+			t.Errorf("the dialog posts %q, which a model does not move", field)
+		}
+	}
+}
+
+// A refused article comes back with the dialog open on what the user typed, so
+// that the message stands beside the box it belongs to.
+func TestModelHeaderDialogComesBackOpenOnARefusedArticle(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.TestEmail, testkit.TestPasswd)
+
+	id := createdModel(t, d, cookie, dropID, "A-100")
+	rec := testkit.PostAs(t, d, paths.Models+"/"+id, modelForm(dropID, "", true), cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+
+	testkit.Wants(t, rec.Body.String(),
+		"<dialog",
+		labels.ModelsHeaderHint,
+		testkit.Message(validate.Required),
+	)
+}
+
+// The dialog that manages the strip offers the upload, and one row per photo
+// with the buttons that move it and the button that removes it.
+func TestModelPhotosDialogManagesTheStrip(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.TestEmail, testkit.TestPasswd)
+
+	id := createdModel(t, d, cookie, dropID, "A-100")
+	path := paths.Models + "/" + id
+	if rec := upload(t, d, path+"/photos", []string{pngUpload + "1", pngUpload + "2"}, cookie); rec.Code != http.StatusSeeOther {
+		t.Fatalf("upload status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+
+	body := testkit.GetAs(t, d, photosDialog(id), cookie).Body.String()
+
+	testkit.Wants(t, body,
+		"<dialog",
+		labels.ModelsPhotosCoverHint,
+		`name="`+views.FieldModelPhoto+`"`,
+		labels.ActionAddPhoto,
+		labels.ActionMoveDown,
+		labels.ActionPhotoRemove,
+		`action="`+path+`/photos/order"`,
+	)
+	// The first photo has nowhere to go up, and the last has nowhere to go
+	// down, so two photos carry one move button each.
+	if got := strings.Count(body, `aria-label="`+labels.ActionMoveUp+`"`); got != 1 {
+		t.Errorf("buttons that move a photo up = %d, want 1", got)
+	}
+}
+
+// A refused upload comes back with the photo dialog open, so that the message
+// reaches the user rather than the page behind the dialog.
+func TestModelPhotosDialogComesBackOpenOnARefusedUpload(t *testing.T) {
+	d := testkit.NewDeps(t)
+	dropID := spine(t, d)
+	cookie := testkit.LoggedIn(t, d, testkit.TestEmail, testkit.TestPasswd)
+
+	id := createdModel(t, d, cookie, dropID, "A-100")
+	rec := upload(t, d, paths.Models+"/"+id+"/photos", []string{textFile}, cookie)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnprocessableEntity)
+	}
+
+	testkit.Wants(t, rec.Body.String(), "<dialog", labels.ModelsPhotoRejected)
 }
