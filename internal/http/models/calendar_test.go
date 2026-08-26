@@ -266,6 +266,18 @@ func dialogForm(plan, fact, note string, shift bool) url.Values {
 	return form
 }
 
+// followed posts a write and reads the card the write sends the browser to. The
+// notice of a write lives on that card and not in the answer to the post.
+func followed(t *testing.T, d testkit.Deps, path string, form url.Values, cookie *http.Cookie) string {
+	t.Helper()
+
+	rec := testkit.PostAs(t, d, path, form, cookie)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d: %s", rec.Code, http.StatusSeeOther, rec.Body)
+	}
+	return testkit.GetAs(t, d, rec.Header().Get("Location"), cookie).Body.String()
+}
+
 // aChain writes a model whose calendar holds one step per plan date given, and
 // returns the steps in the order the dates name them.
 func aChain(t *testing.T, d testkit.Deps, cookie *http.Cookie, modelID string, dates ...string) []milestones.Milestone {
@@ -992,4 +1004,59 @@ func TestModelCardReadsACalendarWithNothingLeftToDo(t *testing.T) {
 		labels.ModelsNext,
 		labels.ModelsNextAllClosed,
 	)
+}
+
+// The two buttons of a row write with no dialog in the way, so the card says
+// what each one did.
+func TestTheCardReportsWhatARowButtonWrote(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	shoot := testkit.CreatedMilestoneType(t, d, cookie, "shoot", "Photo shoot")
+	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
+	path := calendarPath(modelID, one)
+
+	stamped := fmt.Sprintf(labels.MilestonesFactNotice, "shoot", labels.Date(today))
+	testkit.Wants(t, followed(t, d, path, milestoneForm("", "", views.RowFactToday), cookie), stamped)
+
+	testkit.Wants(t, followed(t, d, path, milestoneForm("", "", views.RowRetire), cookie),
+		labels.MilestonesRetiredNotice)
+}
+
+// A save the user made in a dialog reports the sentence every screen reports.
+func TestTheCardReportsAPlainSaveOfOneStep(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+	shoot := testkit.CreatedMilestoneType(t, d, cookie, "shoot", "Photo shoot")
+	one := testkit.AddedMilestone(t, d, modelID, shoot, nextWeek)
+
+	form := dialogForm(nextMonth, "", "the sample was late", true)
+	body := followed(t, d, calendarPath(modelID, one), form, cookie)
+
+	testkit.Wants(t, body, labels.Saved)
+	if strings.Contains(body, labels.MilestonesRetiredNotice) {
+		t.Error("a plain save reports a step that was taken off the calendar")
+	}
+}
+
+// A mark naming a step the model does not hold is a link somebody kept. The
+// card reports the plain sentence rather than a step that is not there.
+func TestTheCardReportsAPlainSaveForAMarkItCannotRead(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+
+	path := paths.Models + "/" + modelID + "?done=fact&step=" + testkit.MissingID.String()
+	testkit.Wants(t, testkit.GetAs(t, d, path, cookie).Body.String(), labels.Saved)
+}
+
+// A card the user simply opened reports nothing at all.
+func TestTheCardReportsNothingWithNoWriteBehindIt(t *testing.T) {
+	d := testkit.NewDeps(t)
+	modelID, cookie := calendarModel(t, d)
+
+	body := testkit.GetAs(t, d, paths.Models+"/"+modelID, cookie).Body.String()
+	for _, absent := range []string{labels.Saved, labels.MilestonesRetiredNotice} {
+		if strings.Contains(body, absent) {
+			t.Errorf("the card reports %q with no write behind it", absent)
+		}
+	}
 }

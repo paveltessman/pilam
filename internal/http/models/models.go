@@ -5,8 +5,10 @@ package models
 import (
 	"context"
 	"errors"
+	"fmt"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 
 	"github.com/paveltessman/pilam/internal/audit"
 	"github.com/paveltessman/pilam/internal/auth"
@@ -219,12 +221,59 @@ func Show(
 		if !ok {
 			return
 		}
-		if shared.IsSaved(r) {
-			card.Notice = labels.Saved
-		}
+		card.Notice = cardNotice(r, card.Calendar)
 		shared.Render(w, r, http.StatusOK, views.Model(card))
 	}
 	return handler
+}
+
+// The mark a write of the calendar leaves on the card it sends the browser back
+// to. A write that has something of its own to say names itself here, and the
+// card reads the mark and reports it in the words of the section.
+//
+// Every other write leaves the mark that RedirectSaved sets, and the card
+// reports the plain sentence every screen reports.
+const (
+	doneQuery = "done"
+	stepQuery = "step"
+
+	doneFact    = "fact"
+	doneRetired = "retired"
+)
+
+// redirectDone sends the browser back to the card with the mark that says what
+// the write did.
+func redirectDone(w http.ResponseWriter, r *http.Request, modelID ids.ID, done, step string) {
+	query := url.Values{doneQuery: {done}}
+	if step != "" {
+		query.Set(stepQuery, step)
+	}
+	http.Redirect(w, r, paths.Models+"/"+modelID.String()+"?"+query.Encode(), http.StatusSeeOther)
+}
+
+// cardNotice is what the card reports about the write the browser just came
+// back from. A card the user simply opened reports nothing.
+//
+// A mark that names a step the model does not hold is a link somebody kept, so
+// it reports the plain sentence rather than a step that is not there.
+func cardNotice(r *http.Request, calendar views.ModelCalendar) string {
+	query := r.URL.Query()
+	switch query.Get(doneQuery) {
+	case doneFact:
+		row, held := calendar.Row(query.Get(stepQuery))
+		if !held {
+			return labels.Saved
+		}
+		return fmt.Sprintf(labels.MilestonesFactNotice, row.Type, row.FactDay())
+
+	case doneRetired:
+		return labels.MilestonesRetiredNotice
+	}
+
+	if shared.IsSaved(r) {
+		return labels.Saved
+	}
+	return ""
 }
 
 // ShowEdit answers with the dialog that edits the header of the card.

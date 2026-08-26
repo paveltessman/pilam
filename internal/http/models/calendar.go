@@ -384,7 +384,16 @@ func SaveMilestone(
 		}
 		if err == nil {
 			logger.Info("milestone updated", "model", model.ID, "milestone", milestoneID)
-			shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
+			// The two buttons of a row write without a dialog, so the card is
+			// where the user reads what each one did.
+			switch r.PostFormValue(views.FieldRowAction) {
+			case views.RowFactToday:
+				redirectDone(w, r, model.ID, doneFact, milestoneID.String())
+			case views.RowRetire:
+				redirectDone(w, r, model.ID, doneRetired, "")
+			default:
+				shared.RedirectSaved(w, r, paths.Models+"/"+model.ID.String())
+			}
 			return
 		}
 

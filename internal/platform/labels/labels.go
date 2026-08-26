@@ -319,6 +319,11 @@ const (
 	MilestonesHasNote    = "Есть комментарий"
 	MilestonesLastChange = "Последнее изменение"
 
+	// What the card reports after a write the row made by itself. %s of
+	// MilestonesFactNotice names the step, and %s the day it was stamped with.
+	MilestonesFactNotice    = "Факт проставлен: %s — %s."
+	MilestonesRetiredNotice = "Этап снят."
+
 	// The two controls of the section: apply a critical path, and add one step
 	// the model does not hold.
 	MilestonesTemplate     = "Критический путь"
