@@ -1,0 +1,27 @@
+pilam.example.com {
+	encode zstd gzip
+
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy 127.0.0.1:8080 {
+		lb_try_duration 10s
+		lb_try_interval 500ms
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+
+		X-Robots-Tag "noindex, nofollow"
+	}
+
+	log {
+		output file /var/log/caddy/pilam.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

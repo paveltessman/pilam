@@ -1,0 +1,66 @@
+# Production stack: Postgres, a one-shot migration run, and the app.
+#
+# Caddy is not part of this stack. It runs on the host and reverse-proxies to
+# the loopback port published below. See deploy/Caddyfile.example.
+#
+# Configuration comes from .env in this directory. Docker Compose reads that
+# file twice: once to fill ${...} here, and once as the environment of the
+# containers. CI writes it, from deploy/env.template and two repository
+# secrets.
+#
+#   ./deploy.sh <tag>    the whole release, what CI runs
+
+name: pilam
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  migrate:
+    image: ${PILAM_IMAGE}
+    command: ["migrate", "up"]
+    env_file: .env
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    logging: *logging
+
+  app:
+    image: ${PILAM_IMAGE}
+    command: ["serve"]
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8081}:8080"
+    volumes:
+      - media:/var/lib/pilam/media
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    logging: *logging
+
+volumes:
+  pgdata:
+  media:
