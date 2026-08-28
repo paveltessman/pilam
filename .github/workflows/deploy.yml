@@ -1,0 +1,122 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  build:
+    name: build and push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: deploy to the vps
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare the ssh key
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Copy the stack files
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          scp -i ~/.ssh/id_deploy docker-compose.prod.yml deploy/deploy.sh deploy/backup.sh \
+            "${USER}@${HOST}:/srv/pilam/"
+          ssh -i ~/.ssh/id_deploy "${USER}@${HOST}" 'chmod +x /srv/pilam/deploy.sh /srv/pilam/backup.sh'
+
+      - name: Render the environment
+        env:
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          for name in SESSION_SECRET POSTGRES_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "deploy: the ${name} repository secret is empty" >&2
+              exit 1
+            fi
+          done
+          python3 - <<'RENDER' > env.rendered
+          import os, string, urllib.parse
+
+          values = dict(os.environ)
+          values["POSTGRES_PASSWORD_URLENC"] = urllib.parse.quote(
+              values["POSTGRES_PASSWORD"], safe=""
+          )
+          template = string.Template(open("deploy/env.template").read())
+          print(template.substitute(values), end="")
+          RENDER
+
+      - name: Install the environment
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "${USER}@${HOST}" \
+            'cat > /srv/pilam/.env.new && chmod 600 /srv/pilam/.env.new && mv /srv/pilam/.env.new /srv/pilam/.env' \
+            < env.rendered
+          rm -f env.rendered
+
+      - name: Release
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "${USER}@${HOST}" "/srv/pilam/deploy.sh ${SHA}"
+
+  prune:
+    name: prune old images
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: pilam
+          package-type: container
+          min-versions-to-keep: 2

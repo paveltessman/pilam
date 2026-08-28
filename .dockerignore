@@ -1,5 +1,13 @@
 .git
+.github
 bin
 tmp
 docs
+var
+backups
 .env
+
+*_templ.go
+*_templ.txt
+*_sqlc.go
+internal/http/static/css/app.css
